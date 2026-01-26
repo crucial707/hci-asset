@@ -21,7 +21,7 @@ func main() {
 	}
 	database, err := db.Connect(
 		cfg.DBHost,
-		cfg.DBport,
+		cfg.DBPort,
 		cfg.DBName,
 		cfg.DBUser,
 		cfg.DBPass,
