@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/crucial707/hci-asset/internal/config"
+	"github.com/crucial707/hci-asset/internal/db"
 )
 
 func main() {
@@ -18,4 +19,16 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	database, err := db.Connect(
+		cfg.DBHost,
+		cfg.DBport,
+		cfg.DBName,
+		cfg.DBUser,
+		cfg.DBPass,
+	)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	log.Println("Successfully connected to the database")
+	_ = database
 }
