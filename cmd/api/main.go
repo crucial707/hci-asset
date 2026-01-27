@@ -10,15 +10,12 @@ import (
 )
 
 func main() {
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "ok")
-	})
+
+	// Load configuration
 	cfg := config.Load()
-	log.Println("Starting server on :*" + cfg.Port)
-	err := http.ListenAndServe("*"+cfg.Port, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
+	log.Println("DEBUG PORT =", cfg.Port)
+
+	// Connect to database FIRST
 	database, err := db.Connect(
 		cfg.DBHost,
 		cfg.DBPort,
@@ -29,6 +26,20 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
+
 	log.Println("Successfully connected to the database")
-	_ = database
+
+	_ = database // placeholder for later use
+
+	// Routes
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, "ok")
+	})
+
+	// Start server LAST
+	log.Println("Starting server on :" + cfg.Port)
+	err = http.ListenAndServe(":"+cfg.Port, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
