@@ -1,22 +1,32 @@
 package main
 
+// ========================
+// IMPORTS
+// ========================
 import (
-	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 
 	"github.com/crucial707/hci-asset/internal/config"
 	"github.com/crucial707/hci-asset/internal/db"
-	"github.com/crucial707/hci-asset/internal/models"
+	"github.com/crucial707/hci-asset/internal/handlers"
 	"github.com/crucial707/hci-asset/internal/repo"
+	"github.com/go-chi/chi/v5"
 )
 
+// ========================
+// MAIN ENTRY POINT
+// ========================
 func main() {
-	// Load config
+
+	// ========================
+	// LOAD CONFIG
+	// ========================
 	cfg := config.Load()
 
-	// Connect to DB
+	// ========================
+	// CONNECT TO DATABASE
+	// ========================
 	database, err := db.Connect(
 		cfg.DBHost,
 		cfg.DBPort,
@@ -29,73 +39,49 @@ func main() {
 	}
 	log.Println("Successfully connected to the database")
 
-	// Initialize repository
+	// ========================
+	// INITIALIZE REPOSITORIES & HANDLERS
+	// ========================
 	assetRepo := repo.NewAssetRepo(database)
+	assetHandler := &handlers.AssetHandler{
+		Repo:  assetRepo,
+		Token: cfg.APIToken,
+	}
 
-	// Health check endpoint
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "ok")
+	// ========================
+	// SETUP ROUTER
+	// ========================
+	r := chi.NewRouter()
+
+	// ---- HEALTH CHECK ----
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("ok"))
 	})
 
-	// Create Asset endpoint
-	http.HandleFunc("/assets", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
+	// ---- ASSET ROUTES ----
+	r.Route("/assets", func(r chi.Router) {
 
-		var input struct {
-			Name        string `json:"name"`
-			Description string `json:"description"`
-		}
+		// POST /assets - CREATE
+		r.Post("/", assetHandler.APITokenMiddleware(assetHandler.CreateAsset))
 
-		err := json.NewDecoder(r.Body).Decode(&input)
-		if err != nil {
-			http.Error(w, "invalid JSON", http.StatusBadRequest)
-			return
-		}
+		// GET /assets/list - LIST ALL
+		r.Get("/list", assetHandler.APITokenMiddleware(assetHandler.ListAssets))
 
-		asset, err := assetRepo.Create(input.Name, input.Description)
-		if err != nil {
-			http.Error(w, "failed to create asset", http.StatusInternalServerError)
-			return
-		}
+		// GET /assets/{id} - GET SINGLE
+		r.Get("/{id}", assetHandler.APITokenMiddleware(assetHandler.GetAsset))
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(asset)
+		// DELETE /assets/{id} - DELETE
+		r.Delete("/{id}", assetHandler.APITokenMiddleware(assetHandler.DeleteAsset))
 
-		http.HandleFunc("/assets/list", func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodGet {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-				return
-			}
-
-			rows, err := database.Query("SELECT id, name, description, created_at FROM assets")
-			if err != nil {
-				http.Error(w, "failed to fetch assets", http.StatusInternalServerError)
-				return
-			}
-			defer rows.Close()
-
-			var assets []models.Asset
-			for rows.Next() {
-				var a models.Asset
-				if err := rows.Scan(&a.ID, &a.Name, &a.Description, &a.CreatedAt); err != nil {
-					http.Error(w, "failed to scan row", http.StatusInternalServerError)
-					return
-				}
-				assets = append(assets, a)
-			}
-
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(assets)
-		})
-
+		// PUT /assets/{id} - UPDATE
+		r.Put("/{id}", assetHandler.APITokenMiddleware(assetHandler.UpdateAsset))
 	})
 
-	// Start server
+	// ========================
+	// START SERVER
+	// ========================
 	log.Println("Starting server on :" + cfg.Port)
-	err = http.ListenAndServe(":"+cfg.Port, nil)
+	err = http.ListenAndServe(":"+cfg.Port, r)
 	if err != nil {
 		log.Fatal(err)
 	}
