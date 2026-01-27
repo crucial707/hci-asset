@@ -13,7 +13,6 @@ func main() {
 
 	// Load configuration
 	cfg := config.Load()
-	log.Println("DEBUG PORT =", cfg.Port)
 
 	// Connect to database FIRST
 	database, err := db.Connect(
