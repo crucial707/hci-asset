@@ -9,54 +9,38 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// ========================
-// HANDLER STRUCT
-// ========================
-
 type AssetHandler struct {
 	Repo  *repo.AssetRepo
 	Token string
 }
 
-// ========================
-// UTILS: JSON ERROR RESPONSE
-// ========================
+//
+// ==========================
+// Middleware
+// ==========================
+//
 
-type ErrorResponse struct {
-	Error string `json:"error"`
-}
-
-func JSONError(w http.ResponseWriter, message string, status int) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(ErrorResponse{Error: message})
-}
-
-// ========================
-// MIDDLEWARE: API TOKEN AUTH
-// ========================
-
-// Exported so main.go can use it
 func (h *AssetHandler) APITokenMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		reqToken := r.Header.Get("X-API-Token")
-		if reqToken != h.Token {
+
+		token := r.Header.Get("X-API-Token")
+
+		if token != h.Token {
 			JSONError(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
+
 		next(w, r)
 	}
 }
 
-// ========================
-// CREATE ASSET
-// ========================
+//
+// ==========================
+// Create Asset
+// ==========================
+//
 
 func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		JSONError(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
 
 	var input struct {
 		Name        string `json:"name"`
@@ -78,11 +62,14 @@ func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(asset)
 }
 
-// ========================
-// LIST ALL ASSETS
-// ========================
+//
+// ==========================
+// List Assets
+// ==========================
+//
 
 func (h *AssetHandler) ListAssets(w http.ResponseWriter, r *http.Request) {
+
 	assets, err := h.Repo.List()
 	if err != nil {
 		JSONError(w, "failed to fetch assets", http.StatusInternalServerError)
@@ -93,15 +80,18 @@ func (h *AssetHandler) ListAssets(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(assets)
 }
 
-// ========================
-// GET SINGLE ASSET
-// ========================
+//
+// ==========================
+// Get Asset By ID
+// ==========================
+//
 
 func (h *AssetHandler) GetAsset(w http.ResponseWriter, r *http.Request) {
+
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		JSONError(w, "invalid id", http.StatusBadRequest)
+		JSONError(w, "invalid asset id", http.StatusBadRequest)
 		return
 	}
 
@@ -115,35 +105,18 @@ func (h *AssetHandler) GetAsset(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(asset)
 }
 
-// ========================
-// DELETE ASSET
-// ========================
-
-func (h *AssetHandler) DeleteAsset(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		JSONError(w, "invalid id", http.StatusBadRequest)
-		return
-	}
-
-	if err := h.Repo.DeleteByID(id); err != nil {
-		JSONError(w, "failed to delete asset", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// ========================
-// UPDATE ASSET
-// ========================
+//
+// ==========================
+// Update Asset
+// ==========================
+//
 
 func (h *AssetHandler) UpdateAsset(w http.ResponseWriter, r *http.Request) {
+
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		JSONError(w, "invalid id", http.StatusBadRequest)
+		JSONError(w, "invalid asset id", http.StatusBadRequest)
 		return
 	}
 
@@ -157,12 +130,35 @@ func (h *AssetHandler) UpdateAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updatedAsset, err := h.Repo.UpdateByID(id, input.Name, input.Description)
+	asset, err := h.Repo.UpdateByID(id, input.Name, input.Description)
 	if err != nil {
 		JSONError(w, "failed to update asset", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(updatedAsset)
+	json.NewEncoder(w).Encode(asset)
+}
+
+//
+// ==========================
+// Delete Asset
+// ==========================
+//
+
+func (h *AssetHandler) DeleteAsset(w http.ResponseWriter, r *http.Request) {
+
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		JSONError(w, "invalid asset id", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.Repo.DeleteByID(id); err != nil {
+		JSONError(w, "failed to delete asset", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
