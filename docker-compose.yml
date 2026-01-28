@@ -1,3 +1,4 @@
+version: "3.9"
 services:
   postgres:
     image: postgres:16
@@ -10,6 +11,22 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+
+  api:
+    build: .
+    container_name: hci-asset-api
+    depends_on:
+      - postgres
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: assetdb
+      DB_USER: assetuser
+      DB_PASS: assetpass
+      API_TOKEN: dev-token
+      PORT: "8080"
+    ports:
+      - "8080:8080"
 
 volumes:
   pgdata:
