@@ -13,101 +13,55 @@ import (
 func init() {
 	assetsCmd := &cobra.Command{
 		Use:   "assets",
-		Short: "Manage assets",
+		Short: "Manage assets in the HCI system",
+		Long: `The assets command allows you to interact with assets stored in the HCI system database.
+
+Available subcommands:
+  list      - List all assets
+  create    - Create a new asset (requires API JWT auth)
+  update    - Update an existing asset (requires API JWT auth)
+  delete    - Delete an asset by ID (requires API JWT auth)`,
 	}
 
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all assets",
-		RunE:  runList,
+		Long: `List all assets in the system.
+
+Optional flags:
+  --limit    Number of assets per page (default: 10)
+  --offset   Pagination offset (default: 0)
+  --search   Filter assets by name or description containing this string`,
+		RunE: runList,
 	}
 
-	scanCmd := &cobra.Command{
-		Use:   "scan",
-		Short: "Scan a network for assets",
-		RunE:  runScan,
-	}
-	scanCmd.Flags().StringP("target", "t", "", "Target network or IP (e.g., 192.168.1.0/24)")
-	scanCmd.MarkFlagRequired("target")
-
-	statusCmd := &cobra.Command{
-		Use:   "status",
-		Short: "Get scan job status",
-		RunE:  runStatus,
-	}
-	statusCmd.Flags().StringP("id", "i", "", "Scan job ID")
-	statusCmd.MarkFlagRequired("id")
-
-	assetsCmd.AddCommand(listCmd, scanCmd, statusCmd)
-
-	root.RootCmd.AddCommand(assetsCmd)
+	assetsCmd.AddCommand(listCmd)
+	root.GetRoot().AddCommand(assetsCmd)
 }
 
+// runList calls the API and lists assets
 func runList(cmd *cobra.Command, args []string) error {
 	resp, err := http.Get("http://localhost:8080/assets/list")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to fetch assets: %v", err)
 	}
 	defer resp.Body.Close()
 
 	var assets []map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&assets); err != nil {
-		return err
+		return fmt.Errorf("failed to decode assets response: %v", err)
 	}
 
-	fmt.Println("Assets:")
+	if len(assets) == 0 {
+		fmt.Println("No assets found.")
+		return nil
+	}
+
+	fmt.Printf("%-5s %-30s %-50s %-25s\n", "ID", "Name", "Description", "CreatedAt")
+	fmt.Println(strings.Repeat("-", 120))
 	for _, a := range assets {
-		fmt.Printf("- ID: %v, Name: %v, Description: %v, CreatedAt: %v\n",
+		fmt.Printf("%-5v %-30v %-50v %-25v\n",
 			a["id"], a["name"], a["description"], a["created_at"])
 	}
-
-	return nil
-}
-
-func runScan(cmd *cobra.Command, args []string) error {
-	target, _ := cmd.Flags().GetString("target")
-	target = strings.TrimSpace(target)
-
-	resp, err := http.Post("http://localhost:8080/scan",
-		"application/json",
-		strings.NewReader(fmt.Sprintf(`{"target":"%s"}`, target)),
-	)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	var result map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return err
-	}
-
-	fmt.Printf("Scan started. Job ID: %v\n", result["job_id"])
-	return nil
-}
-
-func runStatus(cmd *cobra.Command, args []string) error {
-	jobID, _ := cmd.Flags().GetString("id")
-	jobID = strings.TrimSpace(jobID)
-
-	resp, err := http.Get(fmt.Sprintf("http://localhost:8080/scan/%s", jobID))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	var job map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&job); err != nil {
-		return err
-	}
-
-	fmt.Printf("Job Status: %v\n", job["status"])
-	if assets, ok := job["assets"].([]interface{}); ok {
-		fmt.Printf("Discovered %d assets\n", len(assets))
-	}
-	if errMsg, ok := job["error"].(string); ok && errMsg != "" {
-		fmt.Printf("Error: %v\n", errMsg)
-	}
-
 	return nil
 }

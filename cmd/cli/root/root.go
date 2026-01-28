@@ -7,22 +7,27 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// RootCmd is the main CLI command
-var RootCmd = &cobra.Command{
+var rootCmd = &cobra.Command{
 	Use:   "hci",
 	Short: "HCI Asset Management CLI",
-	Long:  "Command line interface for interacting with HCI Asset Management API",
+	Long: `Command line interface for interacting with the HCI Asset Management API.
+
+You can use this CLI to:
+  - List, create, update, and delete assets
+  - Scan a network to discover devices automatically
+  - Authenticate users if needed for protected operations`,
+	SilenceUsage: true,
 }
 
-// Execute runs the CLI
+// Execute runs the root command
 func Execute() {
-	if err := RootCmd.Execute(); err != nil {
-		fmt.Println(err)
+	if err := GetRoot().Execute(); err != nil {
+		fmt.Println("Error:", err)
 		os.Exit(1)
 	}
 }
 
-// GetRoot returns the root command (used by subcommands)
+// GetRoot returns the root Cobra command
 func GetRoot() *cobra.Command {
-	return RootCmd
+	return rootCmd
 }
