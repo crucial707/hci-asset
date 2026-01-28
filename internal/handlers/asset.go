@@ -15,19 +15,30 @@ const (
 	MaxDescriptionLength = 500
 )
 
+// AssetInput defines the structure for creating/updating an asset
+type AssetInput struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
 type AssetHandler struct {
 	Repo *repo.AssetRepo
+}
+
+// ==========================
+// JSON Error Helper
+// ==========================
+func JSONError(w http.ResponseWriter, message string, status int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
 // ==========================
 // Create Asset
 // ==========================
 func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-	}
-
+	var input AssetInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		JSONError(w, "invalid JSON", http.StatusBadRequest)
 		return
@@ -62,35 +73,31 @@ func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 // ==========================
-// List Assets
+// List Assets (Pagination + Search)
 // ==========================
 func (h *AssetHandler) ListAssets(w http.ResponseWriter, r *http.Request) {
-	// Default pagination
 	limit := 10
 	offset := 0
 
-	// Parse limit
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if val, err := strconv.Atoi(l); err == nil && val > 0 {
 			limit = val
 		}
 	}
 
-	// Parse offset
 	if o := r.URL.Query().Get("offset"); o != "" {
 		if val, err := strconv.Atoi(o); err == nil && val >= 0 {
 			offset = val
 		}
 	}
 
-	// Optional search by name
-	name := r.URL.Query().Get("name")
+	search := r.URL.Query().Get("search")
 
 	var assets []models.Asset
 	var err error
 
-	if name != "" {
-		assets, err = h.Repo.SearchPaginated(name, limit, offset)
+	if search != "" {
+		assets, err = h.Repo.SearchPaginated(search, limit, offset)
 	} else {
 		assets, err = h.Repo.ListPaginated(limit, offset)
 	}
@@ -136,17 +143,12 @@ func (h *AssetHandler) UpdateAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var input struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-	}
-
+	var input AssetInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		JSONError(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
 
-	// ===== Validation =====
 	if input.Name == "" {
 		JSONError(w, "name is required", http.StatusBadRequest)
 		return
