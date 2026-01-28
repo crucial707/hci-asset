@@ -19,27 +19,33 @@ const (
 	MaxDescriptionLength = 500
 )
 
-// AssetInput defines the structure for creating/updating an asset
+// ==========================
+// Asset Input Struct
+// ==========================
 type AssetInput struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 }
 
-// AssetHandler holds repositories and scan state
+// ==========================
+// AssetHandler
+// ==========================
 type AssetHandler struct {
 	Repo *repo.AssetRepo
 
-	// scanJobs tracks ongoing and completed scans
 	scanJobs   map[string]*ScanJob
 	scanJobsMu sync.Mutex
 }
 
-// ScanJob represents a single network scan
+// ==========================
+// ScanJob Struct
+// ==========================
 type ScanJob struct {
-	Target string         `json:"target"`
-	Status string         `json:"status"` // running, complete, error
-	Assets []models.Asset `json:"assets"`
-	Error  string         `json:"error,omitempty"`
+	Target   string         `json:"target"`
+	Status   string         `json:"status"` // running, complete, error, canceled
+	Assets   []models.Asset `json:"assets"`
+	Error    string         `json:"error,omitempty"`
+	cancelCh chan struct{}  `json:"-"`
 }
 
 // ==========================
@@ -61,20 +67,13 @@ func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if input.Name == "" {
-		JSONError(w, "name is required", http.StatusBadRequest)
+	// Validation
+	if input.Name == "" || input.Description == "" {
+		JSONError(w, "name and description are required", http.StatusBadRequest)
 		return
 	}
-	if input.Description == "" {
-		JSONError(w, "description is required", http.StatusBadRequest)
-		return
-	}
-	if len(input.Name) > MaxNameLength {
-		JSONError(w, "name cannot exceed 100 characters", http.StatusBadRequest)
-		return
-	}
-	if len(input.Description) > MaxDescriptionLength {
-		JSONError(w, "description cannot exceed 500 characters", http.StatusBadRequest)
+	if len(input.Name) > MaxNameLength || len(input.Description) > MaxDescriptionLength {
+		JSONError(w, "name or description too long", http.StatusBadRequest)
 		return
 	}
 
@@ -89,7 +88,7 @@ func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 // ==========================
-// List Assets (Pagination + Search)
+// List Assets
 // ==========================
 func (h *AssetHandler) ListAssets(w http.ResponseWriter, r *http.Request) {
 	limit := 10
@@ -100,24 +99,20 @@ func (h *AssetHandler) ListAssets(w http.ResponseWriter, r *http.Request) {
 			limit = val
 		}
 	}
-
 	if o := r.URL.Query().Get("offset"); o != "" {
 		if val, err := strconv.Atoi(o); err == nil && val >= 0 {
 			offset = val
 		}
 	}
-
 	search := r.URL.Query().Get("search")
 
 	var assets []models.Asset
 	var err error
-
 	if search != "" {
 		assets, err = h.Repo.SearchPaginated(search, limit, offset)
 	} else {
 		assets, err = h.Repo.ListPaginated(limit, offset)
 	}
-
 	if err != nil {
 		JSONError(w, "failed to fetch assets", http.StatusInternalServerError)
 		return
@@ -128,7 +123,7 @@ func (h *AssetHandler) ListAssets(w http.ResponseWriter, r *http.Request) {
 }
 
 // ==========================
-// Get Asset By ID
+// Get Asset
 // ==========================
 func (h *AssetHandler) GetAsset(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
@@ -165,20 +160,8 @@ func (h *AssetHandler) UpdateAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if input.Name == "" {
-		JSONError(w, "name is required", http.StatusBadRequest)
-		return
-	}
-	if input.Description == "" {
-		JSONError(w, "description is required", http.StatusBadRequest)
-		return
-	}
-	if len(input.Name) > MaxNameLength {
-		JSONError(w, "name cannot exceed 100 characters", http.StatusBadRequest)
-		return
-	}
-	if len(input.Description) > MaxDescriptionLength {
-		JSONError(w, "description cannot exceed 500 characters", http.StatusBadRequest)
+	if input.Name == "" || input.Description == "" {
+		JSONError(w, "name and description required", http.StatusBadRequest)
 		return
 	}
 
@@ -212,10 +195,9 @@ func (h *AssetHandler) DeleteAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 // ==========================
-// Scan Network Handler (single, integrated)
+// Start a Network Scan
 // ==========================
 func (h *AssetHandler) ScanNetwork(w http.ResponseWriter, r *http.Request) {
-	// Parse request
 	var body struct {
 		Target string `json:"target"`
 	}
@@ -228,24 +210,22 @@ func (h *AssetHandler) ScanNetwork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Initialize scanJobs map if nil
 	h.scanJobsMu.Lock()
 	if h.scanJobs == nil {
 		h.scanJobs = make(map[string]*ScanJob)
 	}
-	// Create job
-	jobID := strconv.FormatInt(int64(len(h.scanJobs)+1), 10)
+
+	jobID := strconv.Itoa(len(h.scanJobs) + 1)
 	job := &ScanJob{
-		Target: body.Target,
-		Status: "running",
+		Target:   body.Target,
+		Status:   "running",
+		cancelCh: make(chan struct{}),
 	}
 	h.scanJobs[jobID] = job
 	h.scanJobsMu.Unlock()
 
-	// Run scan async
-	go h.runScan(jobID, body.Target)
+	go h.runScan(jobID, body.Target, job.cancelCh)
 
-	// Return job ID immediately
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"job_id": jobID,
@@ -261,6 +241,7 @@ func (h *AssetHandler) GetScanStatus(w http.ResponseWriter, r *http.Request) {
 	h.scanJobsMu.Lock()
 	job, exists := h.scanJobs[jobID]
 	h.scanJobsMu.Unlock()
+
 	if !exists {
 		JSONError(w, "scan job not found", http.StatusNotFound)
 		return
@@ -271,9 +252,39 @@ func (h *AssetHandler) GetScanStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // ==========================
-// Internal scan executor
+// Cancel Scan Job
 // ==========================
-func (h *AssetHandler) runScan(jobID, target string) {
+func (h *AssetHandler) CancelScan(w http.ResponseWriter, r *http.Request) {
+	jobID := chi.URLParam(r, "id")
+	h.scanJobsMu.Lock()
+	job, exists := h.scanJobs[jobID]
+	h.scanJobsMu.Unlock()
+
+	if !exists {
+		JSONError(w, "scan job not found", http.StatusNotFound)
+		return
+	}
+
+	select {
+	case <-job.cancelCh:
+		// already canceled
+	default:
+		close(job.cancelCh)
+	}
+
+	job.Status = "canceled"
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"job_id": jobID,
+		"status": "canceled",
+	})
+}
+
+// ==========================
+// Internal Scan Executor
+// ==========================
+func (h *AssetHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 	h.scanJobsMu.Lock()
 	job := h.scanJobs[jobID]
 	h.scanJobsMu.Unlock()
@@ -292,6 +303,13 @@ func (h *AssetHandler) runScan(jobID, target string) {
 
 	var discovered []models.Asset
 	for _, line := range lines {
+		select {
+		case <-cancelCh:
+			job.Status = "canceled"
+			return
+		default:
+		}
+
 		match := re.FindStringSubmatch(line)
 		if match != nil {
 			var name, ip string
@@ -311,5 +329,7 @@ func (h *AssetHandler) runScan(jobID, target string) {
 	}
 
 	job.Assets = discovered
-	job.Status = "complete"
+	if job.Status != "canceled" {
+		job.Status = "complete"
+	}
 }

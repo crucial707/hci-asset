@@ -1,11 +1,11 @@
 package scan
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
-	"strings"
-	"time"
 
 	"github.com/crucial707/hci-asset/cmd/cli/root"
 	"github.com/spf13/cobra"
@@ -14,103 +14,54 @@ import (
 func init() {
 	scanCmd := &cobra.Command{
 		Use:   "scan",
-		Short: "Scan a network for devices",
-		Long: `Scan a network or subnet to discover devices automatically.
+		Short: "Start a network scan to discover assets",
+		Long: `Start a network scan using nmap on a target network or subnet.
+The scan will run asynchronously and return a job ID that can be checked using "hci scan-status".
 
-Required flags:
-  --target, -t    Target subnet or IP (e.g., 192.168.1.1/24)
-
-The scan will trigger an Nmap job on the server and display discovered assets when complete.`,
+Example:
+  hci scan --target 192.168.1.1/24`,
 		RunE: runScan,
 	}
 
-	scanCmd.Flags().StringP("target", "t", "", "Target subnet or IP (e.g., 192.168.1.1/24)")
+	scanCmd.Flags().StringP("target", "t", "", "Target IP or subnet to scan (required)")
+	scanCmd.Flags().BoolP("json", "j", false, "Output raw JSON instead of formatted text")
 	scanCmd.MarkFlagRequired("target")
 
 	root.GetRoot().AddCommand(scanCmd)
 }
 
-// runScan triggers the scan API and polls until complete
 func runScan(cmd *cobra.Command, args []string) error {
 	target, _ := cmd.Flags().GetString("target")
-	target = strings.TrimSpace(target)
-	if target == "" {
-		return fmt.Errorf("target is required")
-	}
+	jsonOutput, _ := cmd.Flags().GetBool("json")
 
-	body := map[string]string{"target": target}
-	bodyJSON, _ := json.Marshal(body)
+	payload := map[string]string{"target": target}
+	bodyBytes, _ := json.Marshal(payload)
 
-	resp, err := http.Post("http://localhost:8080/scan", "application/json", strings.NewReader(string(bodyJSON)))
+	resp, err := http.Post("http://localhost:8080/scan", "application/json", bytes.NewReader(bodyBytes))
 	if err != nil {
-		return fmt.Errorf("failed to start scan: %v", err)
+		return fmt.Errorf("failed to call API: %v", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("API error: %s", string(body))
+	}
 
 	var result map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fmt.Errorf("failed to parse scan response: %v", err)
+		return fmt.Errorf("failed to decode response: %v", err)
 	}
 
-	jobID, ok := result["job_id"].(string)
-	if !ok {
-		return fmt.Errorf("invalid response from server")
-	}
-
-	fmt.Printf("Scan started. Job ID: %v\n", jobID)
-	fmt.Println("Waiting for scan to complete...")
-
-	var statusResp map[string]interface{}
-	for {
-		time.Sleep(2 * time.Second)
-		statusResp, err = fetchScanStatus(jobID)
-		if err != nil {
-			return err
-		}
-
-		status, _ := statusResp["status"].(string)
-		if status == "complete" || status == "error" {
-			break
-		}
-		fmt.Print(".")
-	}
-	fmt.Println("\nScan completed.")
-
-	if statusResp["status"] == "error" {
-		fmt.Println("Scan error:", statusResp["error"])
-		return nil
-	}
-
-	// Display discovered assets
-	assetsRaw, ok := statusResp["assets"].([]interface{})
-	if !ok || len(assetsRaw) == 0 {
-		fmt.Println("No assets discovered.")
-		return nil
-	}
-
-	fmt.Printf("%-5s %-30s %-50s\n", "ID", "Name", "Description")
-	fmt.Println(strings.Repeat("-", 90))
-	for _, a := range assetsRaw {
-		if m, ok := a.(map[string]interface{}); ok {
-			fmt.Printf("%-5v %-30v %-50v\n",
-				m["id"], m["name"], m["description"])
-		}
+	if jsonOutput {
+		out, _ := json.MarshalIndent(result, "", "  ")
+		fmt.Println(string(out))
+	} else {
+		fmt.Printf("Scan started for target: %s\n", target)
+		fmt.Printf("Job ID: %v\n", result["job_id"])
+		fmt.Printf("Status: %v\n", result["status"])
+		fmt.Println("Use 'hci scan-status --id <job_id>' to check progress.")
 	}
 
 	return nil
-}
-
-// fetchScanStatus polls the API for job status
-func fetchScanStatus(jobID string) (map[string]interface{}, error) {
-	resp, err := http.Get(fmt.Sprintf("http://localhost:8080/scan/%s", jobID))
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch scan status: %v", err)
-	}
-	defer resp.Body.Close()
-
-	var status map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
-		return nil, fmt.Errorf("failed to parse status response: %v", err)
-	}
-	return status, nil
 }
