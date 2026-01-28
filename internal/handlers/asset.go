@@ -8,43 +8,46 @@ import (
 	"github.com/crucial707/hci-asset/internal/models"
 	"github.com/crucial707/hci-asset/internal/repo"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-playground/validator/v10"
 )
 
-type AssetInput struct {
-	Name        string `json:"name" validate:"required,min=2,max=255"`
-	Description string `json:"description" validate:"max=1000"`
-}
-
-var validate = validator.New()
+const (
+	MaxNameLength        = 100
+	MaxDescriptionLength = 500
+)
 
 type AssetHandler struct {
 	Repo *repo.AssetRepo
 }
 
-//
-// ==========================
-// Middleware
-// ==========================
-//
-
-//
 // ==========================
 // Create Asset
 // ==========================
-//
-
 func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
-	var input AssetInput
+	var input struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
 
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		JSONError(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
 
-	// ===== Validate input =====
-	if err := validate.Struct(input); err != nil {
-		JSONError(w, err.Error(), http.StatusBadRequest)
+	// ===== Validation =====
+	if input.Name == "" {
+		JSONError(w, "name is required", http.StatusBadRequest)
+		return
+	}
+	if input.Description == "" {
+		JSONError(w, "description is required", http.StatusBadRequest)
+		return
+	}
+	if len(input.Name) > MaxNameLength {
+		JSONError(w, "name cannot exceed 100 characters", http.StatusBadRequest)
+		return
+	}
+	if len(input.Description) > MaxDescriptionLength {
+		JSONError(w, "description cannot exceed 500 characters", http.StatusBadRequest)
 		return
 	}
 
@@ -58,12 +61,9 @@ func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(asset)
 }
 
-//
 // ==========================
 // List Assets
 // ==========================
-//
-
 func (h *AssetHandler) ListAssets(w http.ResponseWriter, r *http.Request) {
 	// Default pagination
 	limit := 10
@@ -104,14 +104,10 @@ func (h *AssetHandler) ListAssets(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(assets)
 }
 
-//
 // ==========================
 // Get Asset By ID
 // ==========================
-//
-
 func (h *AssetHandler) GetAsset(w http.ResponseWriter, r *http.Request) {
-
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -129,12 +125,9 @@ func (h *AssetHandler) GetAsset(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(asset)
 }
 
-//
 // ==========================
 // Update Asset
 // ==========================
-//
-
 func (h *AssetHandler) UpdateAsset(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(idStr)
@@ -143,14 +136,31 @@ func (h *AssetHandler) UpdateAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var input AssetInput
+	var input struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		JSONError(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
 
-	if err := validate.Struct(input); err != nil {
-		JSONError(w, err.Error(), http.StatusBadRequest)
+	// ===== Validation =====
+	if input.Name == "" {
+		JSONError(w, "name is required", http.StatusBadRequest)
+		return
+	}
+	if input.Description == "" {
+		JSONError(w, "description is required", http.StatusBadRequest)
+		return
+	}
+	if len(input.Name) > MaxNameLength {
+		JSONError(w, "name cannot exceed 100 characters", http.StatusBadRequest)
+		return
+	}
+	if len(input.Description) > MaxDescriptionLength {
+		JSONError(w, "description cannot exceed 500 characters", http.StatusBadRequest)
 		return
 	}
 
@@ -164,14 +174,10 @@ func (h *AssetHandler) UpdateAsset(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(asset)
 }
 
-//
 // ==========================
 // Delete Asset
 // ==========================
-//
-
 func (h *AssetHandler) DeleteAsset(w http.ResponseWriter, r *http.Request) {
-
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
