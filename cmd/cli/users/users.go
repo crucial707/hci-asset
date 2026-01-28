@@ -4,165 +4,114 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 
-	"github.com/crucial707/hci-asset/cmd/cli/root"
 	"github.com/spf13/cobra"
 )
 
-const tokenFileName = ".hci_token"
+type UserInput struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
 
-// ==========================
-// CLI Command Init
-// ==========================
-func init() {
+var authToken string // stores JWT after login
+
+func InitUsers(rootCmd *cobra.Command) {
 	usersCmd := &cobra.Command{
 		Use:   "users",
-		Short: "Manage users and authentication",
-		Long: `Register or login a user to the HCI Asset Management API.
-Stores JWT token locally for future commands.`,
+		Short: "Manage users (create and login)",
+		Long: `User management commands:
+- create: create a new user with username and password
+- login: authenticate and receive a JWT token`,
 	}
 
-	registerCmd := &cobra.Command{
-		Use:   "register",
-		Short: "Register a new user",
-		Long:  "Register a new user with username and password.",
-		RunE:  runRegister,
+	// -----------------------
+	// Create User Command
+	// -----------------------
+	createCmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a new user",
+		RunE:  runCreateUser,
 	}
+	createCmd.Flags().StringP("username", "u", "", "Username for new user (required)")
+	createCmd.Flags().StringP("password", "p", "", "Password for new user (required)")
+	createCmd.MarkFlagRequired("username")
+	createCmd.MarkFlagRequired("password")
 
+	// -----------------------
+	// Login Command
+	// -----------------------
 	loginCmd := &cobra.Command{
 		Use:   "login",
-		Short: "Login an existing user",
-		Long:  "Login and save JWT token locally for future CLI commands.",
-		RunE:  runLogin,
+		Short: "Login as a user and obtain JWT token",
+		RunE:  runLoginUser,
 	}
+	loginCmd.Flags().StringP("username", "u", "", "Username (required)")
+	loginCmd.Flags().StringP("password", "p", "", "Password (required)")
+	loginCmd.MarkFlagRequired("username")
+	loginCmd.MarkFlagRequired("password")
 
-	logoutCmd := &cobra.Command{
-		Use:   "logout",
-		Short: "Logout current user",
-		Long:  "Remove locally saved JWT token.",
-		RunE:  runLogout,
-	}
-
-	usersCmd.AddCommand(registerCmd, loginCmd, logoutCmd)
-	root.GetRoot().AddCommand(usersCmd)
+	usersCmd.AddCommand(createCmd, loginCmd)
+	rootCmd.AddCommand(usersCmd)
 }
 
-// ==========================
-// Register User
-// ==========================
-func runRegister(cmd *cobra.Command, args []string) error {
-	var username, password string
-	fmt.Print("Username: ")
-	fmt.Scanln(&username)
-	fmt.Print("Password: ")
-	fmt.Scanln(&password)
+// -----------------------
+// Run Create User
+// -----------------------
+func runCreateUser(cmd *cobra.Command, args []string) error {
+	username, _ := cmd.Flags().GetString("username")
+	password, _ := cmd.Flags().GetString("password")
 
-	payload := map[string]string{
-		"username": username,
-		"password": password,
-	}
-	body, _ := json.Marshal(payload)
+	input := UserInput{Username: username, Password: password}
+	bodyBytes, _ := json.Marshal(input)
 
-	resp, err := http.Post("http://localhost:8080/auth/register", "application/json", bytes.NewBuffer(body))
+	resp, err := http.Post("http://localhost:8080/auth/register", "application/json", bytes.NewReader(bodyBytes))
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		b, _ := ioutil.ReadAll(resp.Body)
-		return fmt.Errorf("API error: %s", string(b))
-	}
-
-	fmt.Println("User registered successfully! You can now login.")
+	respBody, _ := io.ReadAll(resp.Body)
+	fmt.Println("Response:", string(respBody))
 	return nil
 }
 
-// ==========================
-// Login User
-// ==========================
-func runLogin(cmd *cobra.Command, args []string) error {
-	var username, password string
-	fmt.Print("Username: ")
-	fmt.Scanln(&username)
-	fmt.Print("Password: ")
-	fmt.Scanln(&password)
+// -----------------------
+// Run Login User
+// -----------------------
+func runLoginUser(cmd *cobra.Command, args []string) error {
+	username, _ := cmd.Flags().GetString("username")
+	password, _ := cmd.Flags().GetString("password")
 
-	payload := map[string]string{
-		"username": username,
-		"password": password,
-	}
-	body, _ := json.Marshal(payload)
+	input := UserInput{Username: username, Password: password}
+	bodyBytes, _ := json.Marshal(input)
 
-	resp, err := http.Post("http://localhost:8080/auth/login", "application/json", bytes.NewBuffer(body))
+	resp, err := http.Post("http://localhost:8080/auth/login", "application/json", bytes.NewReader(bodyBytes))
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		b, _ := ioutil.ReadAll(resp.Body)
-		return fmt.Errorf("API error: %s", string(b))
-	}
+	var respJSON map[string]string
+	json.NewDecoder(resp.Body).Decode(&respJSON)
 
-	var result map[string]string
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return err
-	}
-
-	token, ok := result["token"]
+	token, ok := respJSON["token"]
 	if !ok {
-		return fmt.Errorf("token not returned by API")
-	}
-
-	if err := saveToken(token); err != nil {
-		return err
-	}
-
-	fmt.Println("Login successful! JWT token saved locally.")
-	return nil
-}
-
-// ==========================
-// Logout User
-// ==========================
-func runLogout(cmd *cobra.Command, args []string) error {
-	path := tokenPath()
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		fmt.Println("No user logged in.")
+		fmt.Println("Login failed:", string(bodyBytes))
 		return nil
 	}
 
-	if err := os.Remove(path); err != nil {
-		return err
-	}
-
-	fmt.Println("Logged out successfully.")
+	authToken = token
+	fmt.Println("Login successful! JWT token stored for this session.")
 	return nil
 }
 
-// ==========================
-// Token Storage Helpers
-// ==========================
-func saveToken(token string) error {
-	path := tokenPath()
-	return ioutil.WriteFile(path, []byte(token), 0600)
-}
-
-func LoadToken() (string, error) {
-	path := tokenPath()
-	data, err := ioutil.ReadFile(path)
-	if err != nil {
-		return "", err
+// -----------------------
+// Helper to attach JWT to requests
+// -----------------------
+func AuthHeader(req *http.Request) {
+	if authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+authToken)
 	}
-	return string(data), nil
-}
-
-func tokenPath() string {
-	dir, _ := os.UserHomeDir()
-	return filepath.Join(dir, tokenFileName)
 }

@@ -3,45 +3,46 @@ package assets
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 
-	"github.com/crucial707/hci-asset/cmd/cli/root"
 	"github.com/crucial707/hci-asset/cmd/cli/users"
 	"github.com/spf13/cobra"
 )
 
-func init() {
+func InitAssets(rootCmd *cobra.Command) {
 	assetsCmd := &cobra.Command{
 		Use:   "assets",
-		Short: "Manage assets in HCI Asset Management API",
-		Long: `Assets allow you to create, list, update, or delete devices
-discovered in your network or manually added.`,
+		Short: "Manage assets",
+		Long:  "List assets or fetch asset details from the HCI Asset Management API",
 	}
 
+	// -----------------------
+	// List Assets Command
+	// -----------------------
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all assets",
-		Long:  "Fetches all assets from the API, supports pagination and search (via API).",
-		RunE:  runList,
+		Long: `List all assets currently in the database.
+Requires user login to attach JWT token.`,
+		RunE: runList,
 	}
 
 	assetsCmd.AddCommand(listCmd)
-	root.GetRoot().AddCommand(assetsCmd)
+	rootCmd.AddCommand(assetsCmd)
 }
 
+// -----------------------
+// Run List Assets
+// -----------------------
 func runList(cmd *cobra.Command, args []string) error {
-	// Load JWT token from user store
-	token, err := users.LoadToken()
-	if err != nil {
-		return fmt.Errorf("failed to load token: %v. Have you logged in?", err)
-	}
-
 	req, err := http.NewRequest("GET", "http://localhost:8080/assets/list", nil)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+
+	// Attach JWT if logged in
+	users.AuthHeader(req)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -50,9 +51,10 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		body, _ := ioutil.ReadAll(resp.Body)
-		return fmt.Errorf("API error: %s", string(body))
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println("Error:", string(body))
+		return nil
 	}
 
 	var assets []map[string]interface{}
@@ -65,6 +67,5 @@ func runList(cmd *cobra.Command, args []string) error {
 		fmt.Printf("- ID: %v, Name: %v, Description: %v, CreatedAt: %v\n",
 			a["id"], a["name"], a["description"], a["created_at"])
 	}
-
 	return nil
 }

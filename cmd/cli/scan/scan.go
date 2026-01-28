@@ -4,61 +4,70 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 
-	"github.com/crucial707/hci-asset/cmd/cli/root"
 	"github.com/crucial707/hci-asset/cmd/cli/users"
 	"github.com/spf13/cobra"
 )
 
-func init() {
-	scanCmd := &cobra.Command{
-		Use:   "scan",
-		Short: "Scan a network for devices",
-		Long: `Perform a network scan using the API's Nmap integration.
-Example usage:
-  hci scan 192.168.1.0/24
-This will start an async scan and return a job ID.`,
-	}
-
-	startCmd := &cobra.Command{
-		Use:   "start [target]",
-		Short: "Start a network scan",
-		Long:  "Starts a scan for a given target network (CIDR or IP). Requires login.",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runScan,
-	}
-
-	statusCmd := &cobra.Command{
-		Use:   "status [job_id]",
-		Short: "Check the status of a scan job",
-		Long:  "Check the progress or result of an async scan using the job ID returned when the scan was started.",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runStatus,
-	}
-
-	scanCmd.AddCommand(startCmd, statusCmd)
-	root.GetRoot().AddCommand(scanCmd)
+type ScanRequest struct {
+	Target string `json:"target"`
 }
 
-func runScan(cmd *cobra.Command, args []string) error {
-	target := args[0]
+// InitScan initializes the scan command in the CLI
+func InitScan(rootCmd *cobra.Command) {
+	scanCmd := &cobra.Command{
+		Use:   "scan",
+		Short: "Perform network scans",
+		Long: `Scan the network for hosts using Nmap.
 
-	token, err := users.LoadToken()
-	if err != nil {
-		return fmt.Errorf("failed to load token: %v. Have you logged in?", err)
+Requires user login. Use JWT authentication from the login session.`,
 	}
 
-	payload := map[string]string{"target": target}
-	body, _ := json.Marshal(payload)
+	// -----------------------
+	// Run Scan
+	// -----------------------
+	runCmd := &cobra.Command{
+		Use:   "run",
+		Short: "Run a scan on a target (IP or subnet)",
+		Long:  "Run a network scan against a specified IP or subnet (e.g., 192.168.1.0/24).",
+		RunE:  runScan,
+	}
+	runCmd.Flags().StringP("target", "t", "", "Target IP address or subnet (required)")
+	runCmd.MarkFlagRequired("target")
 
-	req, err := http.NewRequest("POST", "http://localhost:8080/scan", bytes.NewBuffer(body))
+	// -----------------------
+	// Get Scan Status
+	// -----------------------
+	statusCmd := &cobra.Command{
+		Use:   "status",
+		Short: "Check the status of a scan job",
+		Long:  "Get the current status of a scan job by Job ID.",
+		RunE:  getScanStatus,
+	}
+	statusCmd.Flags().StringP("id", "i", "", "Job ID to check (required)")
+	statusCmd.MarkFlagRequired("id")
+
+	scanCmd.AddCommand(runCmd, statusCmd)
+	rootCmd.AddCommand(scanCmd)
+}
+
+// -----------------------
+// Run Scan Command
+// -----------------------
+func runScan(cmd *cobra.Command, args []string) error {
+	target, _ := cmd.Flags().GetString("target")
+	reqBody := ScanRequest{Target: target}
+	bodyBytes, _ := json.Marshal(reqBody)
+
+	req, err := http.NewRequest("POST", "http://localhost:8080/scan", bytes.NewReader(bodyBytes))
 	if err != nil {
 		return err
 	}
+
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
+	users.AuthHeader(req) // attach JWT
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -67,33 +76,32 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		body, _ := ioutil.ReadAll(resp.Body)
-		return fmt.Errorf("API error: %s", string(body))
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println("Error:", string(body))
+		return nil
 	}
 
-	var result map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return err
-	}
+	var respJSON map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&respJSON)
 
-	fmt.Printf("Scan started: job_id=%v\n", result["job_id"])
+	fmt.Printf("Scan job started! Job ID: %v, Status: %v\n", respJSON["job_id"], respJSON["status"])
 	return nil
 }
 
-func runStatus(cmd *cobra.Command, args []string) error {
-	jobID := args[0]
+// -----------------------
+// Get Scan Status Command
+// -----------------------
+func getScanStatus(cmd *cobra.Command, args []string) error {
+	jobID, _ := cmd.Flags().GetString("id")
 
-	token, err := users.LoadToken()
-	if err != nil {
-		return fmt.Errorf("failed to load token: %v. Have you logged in?", err)
-	}
-
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:8080/scan/%s", jobID), nil)
+	url := "http://localhost:8080/scan/" + jobID
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+
+	users.AuthHeader(req) // attach JWT
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -102,16 +110,24 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		body, _ := ioutil.ReadAll(resp.Body)
-		return fmt.Errorf("API error: %s", string(body))
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println("Error:", string(body))
+		return nil
 	}
 
 	var job map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&job); err != nil {
-		return err
+	json.NewDecoder(resp.Body).Decode(&job)
+
+	fmt.Printf("Job ID: %v\nStatus: %v\nDiscovered Assets: %v\n",
+		job["target"], job["status"], len(job["assets"].([]interface{})))
+
+	// Optionally print discovered assets
+	assets := job["assets"].([]interface{})
+	for i, a := range assets {
+		assetMap := a.(map[string]interface{})
+		fmt.Printf("%d. Name: %v, Description: %v\n", i+1, assetMap["name"], assetMap["description"])
 	}
 
-	fmt.Printf("Scan Job Status: %v\n", job)
 	return nil
 }
