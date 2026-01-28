@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/crucial707/hci-asset/internal/models"
 	"github.com/crucial707/hci-asset/internal/repo"
@@ -18,20 +19,27 @@ const (
 	MaxDescriptionLength = 500
 )
 
-// ==========================
-// INPUT STRUCTS
-// ==========================
+// AssetInput defines the structure for creating/updating an asset
 type AssetInput struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 }
 
-type ScanInput struct {
-	Target string `json:"target"`
-}
-
+// AssetHandler holds repositories and scan state
 type AssetHandler struct {
 	Repo *repo.AssetRepo
+
+	// scanJobs tracks ongoing and completed scans
+	scanJobs   map[string]*ScanJob
+	scanJobsMu sync.Mutex
+}
+
+// ScanJob represents a single network scan
+type ScanJob struct {
+	Target string         `json:"target"`
+	Status string         `json:"status"` // running, complete, error
+	Assets []models.Asset `json:"assets"`
+	Error  string         `json:"error,omitempty"`
 }
 
 // ==========================
@@ -44,7 +52,7 @@ func JSONError(w http.ResponseWriter, message string, status int) {
 }
 
 // ==========================
-// CREATE ASSET
+// Create Asset
 // ==========================
 func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
 	var input AssetInput
@@ -53,6 +61,7 @@ func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validation
 	if input.Name == "" {
 		JSONError(w, "name is required", http.StatusBadRequest)
 		return
@@ -81,7 +90,7 @@ func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 // ==========================
-// LIST ASSETS (PAGINATION + SEARCH)
+// List Assets (Pagination + Search)
 // ==========================
 func (h *AssetHandler) ListAssets(w http.ResponseWriter, r *http.Request) {
 	limit := 10
@@ -92,6 +101,7 @@ func (h *AssetHandler) ListAssets(w http.ResponseWriter, r *http.Request) {
 			limit = val
 		}
 	}
+
 	if o := r.URL.Query().Get("offset"); o != "" {
 		if val, err := strconv.Atoi(o); err == nil && val >= 0 {
 			offset = val
@@ -119,7 +129,7 @@ func (h *AssetHandler) ListAssets(w http.ResponseWriter, r *http.Request) {
 }
 
 // ==========================
-// GET ASSET BY ID
+// Get Asset By ID
 // ==========================
 func (h *AssetHandler) GetAsset(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
@@ -140,7 +150,7 @@ func (h *AssetHandler) GetAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 // ==========================
-// UPDATE ASSET
+// Update Asset
 // ==========================
 func (h *AssetHandler) UpdateAsset(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
@@ -184,7 +194,7 @@ func (h *AssetHandler) UpdateAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 // ==========================
-// DELETE ASSET
+// Delete Asset
 // ==========================
 func (h *AssetHandler) DeleteAsset(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
@@ -203,64 +213,104 @@ func (h *AssetHandler) DeleteAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 // ==========================
-// SCAN NETWORK HANDLER
+// Scan Network Handler
 // ==========================
 func (h *AssetHandler) ScanNetwork(w http.ResponseWriter, r *http.Request) {
-	var input ScanInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	var body struct {
+		Target string `json:"target"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		JSONError(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
-
-	target := strings.TrimSpace(input.Target)
-	if target == "" {
+	if body.Target == "" {
 		JSONError(w, "target is required", http.StatusBadRequest)
 		return
 	}
 
-	// Run nmap
-	cmd := exec.Command("C:\\Program Files (x86)\\Nmap\\nmap.exe", "-sn", target)
-	out, err := cmd.Output()
-	if err != nil {
-		JSONError(w, "failed to run nmap: "+err.Error(), http.StatusInternalServerError)
+	// Initialize scanJobs map if nil
+	h.scanJobsMu.Lock()
+	if h.scanJobs == nil {
+		h.scanJobs = make(map[string]*ScanJob)
+	}
+	// Create job
+	jobID := strconv.FormatInt(int64(len(h.scanJobs)+1), 10)
+	job := &ScanJob{
+		Target: body.Target,
+		Status: "running",
+	}
+	h.scanJobs[jobID] = job
+	h.scanJobsMu.Unlock()
+
+	// Run scan async
+	go h.runScan(jobID, body.Target)
+
+	// Return job ID immediately
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"job_id": jobID,
+		"status": "running",
+	})
+}
+
+// ==========================
+// Get Scan Status
+// ==========================
+func (h *AssetHandler) GetScanStatus(w http.ResponseWriter, r *http.Request) {
+	jobID := chi.URLParam(r, "id")
+	h.scanJobsMu.Lock()
+	job, exists := h.scanJobs[jobID]
+	h.scanJobsMu.Unlock()
+	if !exists {
+		JSONError(w, "scan job not found", http.StatusNotFound)
 		return
 	}
 
-	output := string(out)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(job)
+}
 
-	// Regex for host names and MAC addresses
-	reIP := regexp.MustCompile(`Nmap scan report for (.+) \((\d+\.\d+\.\d+\.\d+)\)`)
-	reMAC := regexp.MustCompile(`MAC Address: ([0-9A-F:]+) \((.+)\)`)
+// ==========================
+// Internal scan executor
+// ==========================
+func (h *AssetHandler) runScan(jobID, target string) {
+	h.scanJobsMu.Lock()
+	job := h.scanJobs[jobID]
+	h.scanJobsMu.Unlock()
 
-	var assets []models.Asset
+	cmd := exec.Command("C:\\Program Files (x86)\\Nmap\\nmap.exe", "-sn", target)
+	outputBytes, err := cmd.CombinedOutput()
+	if err != nil {
+		job.Status = "error"
+		job.Error = err.Error()
+		return
+	}
+
+	output := string(outputBytes)
+	// Parse Nmap output for IPs and hostnames
+	re := regexp.MustCompile(`Nmap scan report for (.+) \(([\d\.]+)\)|Nmap scan report for ([\d\.]+)`)
 	lines := strings.Split(output, "\n")
-	var currentName, currentIP, currentMAC string
 
+	var discovered []models.Asset
 	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if matches := reIP.FindStringSubmatch(line); matches != nil {
-			currentName = matches[1]
-			currentIP = matches[2]
-		} else if matches := reMAC.FindStringSubmatch(line); matches != nil {
-			currentMAC = matches[1]
-		}
-
-		if currentIP != "" && currentName != "" {
-			desc := currentIP
-			if currentMAC != "" {
-				desc += " | " + currentMAC
+		match := re.FindStringSubmatch(line)
+		if match != nil {
+			var name, ip string
+			if match[2] != "" { // hostname (ip)
+				name = match[1]
+				ip = match[2]
+			} else if match[3] != "" { // just IP
+				name = ""
+				ip = match[3]
+			} else {
+				continue
 			}
-			asset, _ := h.Repo.Create(currentName, desc)
-			assets = append(assets, asset)
-
-			// Reset for next host
-			currentName, currentIP, currentMAC = "", "", ""
+			desc := "Discovered device"
+			asset, _ := h.Repo.Create(name+" ("+ip+")", desc)
+			discovered = append(discovered, asset)
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"scanned_hosts": len(assets),
-		"assets":        assets,
-	})
+	job.Assets = discovered
+	job.Status = "complete"
 }
