@@ -8,38 +8,62 @@ import (
 	"net/http"
 
 	"github.com/crucial707/hci-asset/cmd/cli/root"
+	"github.com/crucial707/hci-asset/cmd/cli/users"
 	"github.com/spf13/cobra"
 )
 
 func init() {
 	scanCmd := &cobra.Command{
 		Use:   "scan",
-		Short: "Start a network scan to discover assets",
-		Long: `Start a network scan using nmap on a target network or subnet.
-The scan will run asynchronously and return a job ID that can be checked using "hci scan-status".
-
-Example:
-  hci scan --target 192.168.1.1/24`,
-		RunE: runScan,
+		Short: "Scan a network for devices",
+		Long: `Perform a network scan using the API's Nmap integration.
+Example usage:
+  hci scan 192.168.1.0/24
+This will start an async scan and return a job ID.`,
 	}
 
-	scanCmd.Flags().StringP("target", "t", "", "Target IP or subnet to scan (required)")
-	scanCmd.Flags().BoolP("json", "j", false, "Output raw JSON instead of formatted text")
-	scanCmd.MarkFlagRequired("target")
+	startCmd := &cobra.Command{
+		Use:   "start [target]",
+		Short: "Start a network scan",
+		Long:  "Starts a scan for a given target network (CIDR or IP). Requires login.",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runScan,
+	}
 
+	statusCmd := &cobra.Command{
+		Use:   "status [job_id]",
+		Short: "Check the status of a scan job",
+		Long:  "Check the progress or result of an async scan using the job ID returned when the scan was started.",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runStatus,
+	}
+
+	scanCmd.AddCommand(startCmd, statusCmd)
 	root.GetRoot().AddCommand(scanCmd)
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
-	target, _ := cmd.Flags().GetString("target")
-	jsonOutput, _ := cmd.Flags().GetBool("json")
+	target := args[0]
+
+	token, err := users.LoadToken()
+	if err != nil {
+		return fmt.Errorf("failed to load token: %v. Have you logged in?", err)
+	}
 
 	payload := map[string]string{"target": target}
-	bodyBytes, _ := json.Marshal(payload)
+	body, _ := json.Marshal(payload)
 
-	resp, err := http.Post("http://localhost:8080/scan", "application/json", bytes.NewReader(bodyBytes))
+	req, err := http.NewRequest("POST", "http://localhost:8080/scan", bytes.NewBuffer(body))
 	if err != nil {
-		return fmt.Errorf("failed to call API: %v", err)
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
 	}
 	defer resp.Body.Close()
 
@@ -50,18 +74,44 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	var result map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fmt.Errorf("failed to decode response: %v", err)
+		return err
 	}
 
-	if jsonOutput {
-		out, _ := json.MarshalIndent(result, "", "  ")
-		fmt.Println(string(out))
-	} else {
-		fmt.Printf("Scan started for target: %s\n", target)
-		fmt.Printf("Job ID: %v\n", result["job_id"])
-		fmt.Printf("Status: %v\n", result["status"])
-		fmt.Println("Use 'hci scan-status --id <job_id>' to check progress.")
+	fmt.Printf("Scan started: job_id=%v\n", result["job_id"])
+	return nil
+}
+
+func runStatus(cmd *cobra.Command, args []string) error {
+	jobID := args[0]
+
+	token, err := users.LoadToken()
+	if err != nil {
+		return fmt.Errorf("failed to load token: %v. Have you logged in?", err)
 	}
 
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:8080/scan/%s", jobID), nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("API error: %s", string(body))
+	}
+
+	var job map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&job); err != nil {
+		return err
+	}
+
+	fmt.Printf("Scan Job Status: %v\n", job)
 	return nil
 }

@@ -93,6 +93,9 @@ func main() {
 		r.Post("/assets", assetHandler.CreateAsset)
 		r.Put("/assets/{id}", assetHandler.UpdateAsset)
 		r.Delete("/assets/{id}", assetHandler.DeleteAsset)
+		r.Delete("/scan/{id}", assetHandler.CancelScan)
+		r.Get("/scan/{id}", assetHandler.GetScanStatus)
+
 	})
 
 	// =====================
