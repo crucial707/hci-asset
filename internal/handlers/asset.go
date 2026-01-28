@@ -11,6 +11,13 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
+type AssetInput struct {
+	Name        string `json:"name" validate:"required,min=2,max=255"`
+	Description string `json:"description" validate:"max=1000"`
+}
+
+var validate = validator.New()
+
 type AssetHandler struct {
 	Repo  *repo.AssetRepo
 	Token string
@@ -43,10 +50,7 @@ func (h *AssetHandler) APITokenMiddleware(next http.HandlerFunc) http.HandlerFun
 //
 
 func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		Name        string `json:"name" validate:"required,min=2,max=255"`
-		Description string `json:"description" validate:"max=1000"`
-	}
+	var input AssetInput
 
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		JSONError(w, "invalid JSON", http.StatusBadRequest)
@@ -54,7 +58,6 @@ func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ===== Validate input =====
-	validate := validator.New()
 	if err := validate.Struct(input); err != nil {
 		JSONError(w, err.Error(), http.StatusBadRequest)
 		return
@@ -155,18 +158,12 @@ func (h *AssetHandler) UpdateAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var input struct {
-		Name        string `json:"name" validate:"required,min=2,max=255"`
-		Description string `json:"description" validate:"max=1000"`
-	}
-
+	var input AssetInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		JSONError(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
 
-	// ===== Validate input =====
-	validate := validator.New()
 	if err := validate.Struct(input); err != nil {
 		JSONError(w, err.Error(), http.StatusBadRequest)
 		return
