@@ -122,3 +122,55 @@ func (r *AssetRepo) List() ([]models.Asset, error) {
 	}
 	return assets, nil
 }
+
+// ========================
+// LIST ASSETS WITH PAGINATION
+// ========================
+func (r *AssetRepo) ListPaginated(limit, offset int) ([]models.Asset, error) {
+	rows, err := r.DB.Query(
+		"SELECT id, name, description, created_at FROM assets ORDER BY id LIMIT $1 OFFSET $2",
+		limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var assets []models.Asset
+	for rows.Next() {
+		var a models.Asset
+		if err := rows.Scan(&a.ID, &a.Name, &a.Description, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		assets = append(assets, a)
+	}
+	return assets, nil
+}
+
+// ========================
+// SEARCH ASSETS WITH PAGINATION
+// ========================
+func (r *AssetRepo) SearchPaginated(name string, limit, offset int) ([]models.Asset, error) {
+	rows, err := r.DB.Query(
+		`SELECT id, name, description, created_at 
+		 FROM assets 
+		 WHERE name ILIKE $1
+		 ORDER BY id
+		 LIMIT $2 OFFSET $3`,
+		"%"+name+"%", limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var assets []models.Asset
+	for rows.Next() {
+		var a models.Asset
+		if err := rows.Scan(&a.ID, &a.Name, &a.Description, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		assets = append(assets, a)
+	}
+	return assets, nil
+}

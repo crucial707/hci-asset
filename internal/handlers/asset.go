@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/crucial707/hci-asset/internal/models"
 	"github.com/crucial707/hci-asset/internal/repo"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-playground/validator/v10"
 )
 
 type AssetHandler struct {
@@ -41,14 +43,20 @@ func (h *AssetHandler) APITokenMiddleware(next http.HandlerFunc) http.HandlerFun
 //
 
 func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
-
 	var input struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
+		Name        string `json:"name" validate:"required,min=2,max=255"`
+		Description string `json:"description" validate:"max=1000"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		JSONError(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// ===== Validate input =====
+	validate := validator.New()
+	if err := validate.Struct(input); err != nil {
+		JSONError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -69,8 +77,36 @@ func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
 //
 
 func (h *AssetHandler) ListAssets(w http.ResponseWriter, r *http.Request) {
+	// Default pagination
+	limit := 10
+	offset := 0
 
-	assets, err := h.Repo.List()
+	// Parse limit
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if val, err := strconv.Atoi(l); err == nil && val > 0 {
+			limit = val
+		}
+	}
+
+	// Parse offset
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if val, err := strconv.Atoi(o); err == nil && val >= 0 {
+			offset = val
+		}
+	}
+
+	// Optional search by name
+	name := r.URL.Query().Get("name")
+
+	var assets []models.Asset
+	var err error
+
+	if name != "" {
+		assets, err = h.Repo.SearchPaginated(name, limit, offset)
+	} else {
+		assets, err = h.Repo.ListPaginated(limit, offset)
+	}
+
 	if err != nil {
 		JSONError(w, "failed to fetch assets", http.StatusInternalServerError)
 		return
@@ -112,7 +148,6 @@ func (h *AssetHandler) GetAsset(w http.ResponseWriter, r *http.Request) {
 //
 
 func (h *AssetHandler) UpdateAsset(w http.ResponseWriter, r *http.Request) {
-
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -121,12 +156,19 @@ func (h *AssetHandler) UpdateAsset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
+		Name        string `json:"name" validate:"required,min=2,max=255"`
+		Description string `json:"description" validate:"max=1000"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		JSONError(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// ===== Validate input =====
+	validate := validator.New()
+	if err := validate.Struct(input); err != nil {
+		JSONError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
