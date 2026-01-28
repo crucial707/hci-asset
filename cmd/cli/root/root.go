@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Exported RootCmd so other packages can attach subcommands
+// RootCmd is the main CLI command
 var RootCmd = &cobra.Command{
 	Use:   "hci",
 	Short: "HCI Asset Management CLI",
@@ -21,6 +21,8 @@ func Execute() {
 		os.Exit(1)
 	}
 }
+
+// GetRoot returns the root command (used by subcommands)
 func GetRoot() *cobra.Command {
 	return RootCmd
 }

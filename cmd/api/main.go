@@ -16,6 +16,7 @@ import (
 )
 
 func main() {
+
 	// =====================
 	// Load Config
 	// =====================
@@ -62,10 +63,10 @@ func main() {
 	r.Use(chiMiddleware.Recoverer)
 
 	// =====================
-	// Network Scan Routes
+	// Scan Routes
 	// =====================
-	r.Post("/scan", assetHandler.ScanNetwork)       // start a new scan
-	r.Get("/scan/{id}", assetHandler.GetScanStatus) // check scan status
+	r.Post("/scan", assetHandler.ScanNetwork)       // Start async scan
+	r.Get("/scan/{id}", assetHandler.GetScanStatus) // Get scan job status
 
 	// =====================
 	// Auth Routes

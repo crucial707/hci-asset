@@ -61,7 +61,6 @@ func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validation
 	if input.Name == "" {
 		JSONError(w, "name is required", http.StatusBadRequest)
 		return
@@ -213,9 +212,10 @@ func (h *AssetHandler) DeleteAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 // ==========================
-// Scan Network Handler
+// Scan Network Handler (single, integrated)
 // ==========================
 func (h *AssetHandler) ScanNetwork(w http.ResponseWriter, r *http.Request) {
+	// Parse request
 	var body struct {
 		Target string `json:"target"`
 	}
@@ -287,7 +287,6 @@ func (h *AssetHandler) runScan(jobID, target string) {
 	}
 
 	output := string(outputBytes)
-	// Parse Nmap output for IPs and hostnames
 	re := regexp.MustCompile(`Nmap scan report for (.+) \(([\d\.]+)\)|Nmap scan report for ([\d\.]+)`)
 	lines := strings.Split(output, "\n")
 
@@ -296,10 +295,10 @@ func (h *AssetHandler) runScan(jobID, target string) {
 		match := re.FindStringSubmatch(line)
 		if match != nil {
 			var name, ip string
-			if match[2] != "" { // hostname (ip)
+			if match[2] != "" {
 				name = match[1]
 				ip = match[2]
-			} else if match[3] != "" { // just IP
+			} else if match[3] != "" {
 				name = ""
 				ip = match[3]
 			} else {
