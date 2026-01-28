@@ -62,6 +62,8 @@ func main() {
 	r.Use(chiMiddleware.Logger)
 	r.Use(chiMiddleware.Recoverer)
 
+	r.Post("/scan", assetHandler.ScanNetwork)
+
 	// =====================
 	// Auth Routes
 	// =====================
