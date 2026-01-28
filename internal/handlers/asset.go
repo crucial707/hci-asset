@@ -19,8 +19,7 @@ type AssetInput struct {
 var validate = validator.New()
 
 type AssetHandler struct {
-	Repo  *repo.AssetRepo
-	Token string
+	Repo *repo.AssetRepo
 }
 
 //
@@ -28,20 +27,6 @@ type AssetHandler struct {
 // Middleware
 // ==========================
 //
-
-func (h *AssetHandler) APITokenMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-
-		token := r.Header.Get("X-API-Token")
-
-		if token != h.Token {
-			JSONError(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		next(w, r)
-	}
-}
 
 //
 // ==========================

@@ -13,6 +13,8 @@ type Config struct {
 	DBName string
 	DBUser string
 	DBPass string
+
+	JWTSecret string
 }
 
 func Load() Config {
@@ -25,7 +27,10 @@ func Load() Config {
 		DBName: getEnv("DB_NAME", "assetdb"),
 		DBUser: getEnv("DB_USER", "assetuser"),
 		DBPass: getEnv("DB_PASS", "assetpass"),
+
+		JWTSecret: getEnv("JWT_SECRET", "supersecretkey"),
 	}
+
 }
 
 func getEnv(key, fallback string) string {

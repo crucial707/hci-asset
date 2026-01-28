@@ -10,7 +10,9 @@ import (
 	"github.com/crucial707/hci-asset/internal/handlers"
 	"github.com/crucial707/hci-asset/internal/repo"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	chiMiddleware "github.com/go-chi/chi/v5/middleware"
+
+	"github.com/crucial707/hci-asset/internal/middleware"
 )
 
 func main() {
@@ -30,7 +32,6 @@ func main() {
 		cfg.DBUser,
 		cfg.DBPass,
 	)
-
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -39,13 +40,18 @@ func main() {
 	// Repositories
 	// =====================
 	assetRepo := repo.NewAssetRepo(database)
+	userRepo := repo.NewUserRepo(database)
 
 	// =====================
 	// Handlers
 	// =====================
 	assetHandler := &handlers.AssetHandler{
-		Repo:  assetRepo,
-		Token: cfg.APIToken,
+		Repo: assetRepo,
+	}
+
+	authHandler := &handlers.AuthHandler{
+		UserRepo:  userRepo,
+		JWTSecret: []byte(cfg.JWTSecret),
 	}
 
 	// =====================
@@ -53,22 +59,35 @@ func main() {
 	// =====================
 	r := chi.NewRouter()
 
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
+	r.Use(chiMiddleware.Logger)
+	r.Use(chiMiddleware.Recoverer)
 
 	// =====================
-	// Routes
+	// Auth Routes
 	// =====================
+	r.Post("/auth/register", authHandler.Register)
+	r.Post("/auth/login", authHandler.Login)
 
+	// =====================
+	// Public Routes
+	// =====================
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok"))
 	})
 
-	r.Post("/assets", assetHandler.APITokenMiddleware(assetHandler.CreateAsset))
 	r.Get("/assets/list", assetHandler.ListAssets)
 	r.Get("/assets/{id}", assetHandler.GetAsset)
-	r.Put("/assets/{id}", assetHandler.APITokenMiddleware(assetHandler.UpdateAsset))
-	r.Delete("/assets/{id}", assetHandler.APITokenMiddleware(assetHandler.DeleteAsset))
+
+	// =====================
+	// Protected Routes (JWT)
+	// =====================
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.JWTMiddleware([]byte(cfg.JWTSecret))) // JWT required
+
+		r.Post("/assets", assetHandler.CreateAsset)
+		r.Put("/assets/{id}", assetHandler.UpdateAsset)
+		r.Delete("/assets/{id}", assetHandler.DeleteAsset)
+	})
 
 	// =====================
 	// Start Server
