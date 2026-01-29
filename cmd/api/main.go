@@ -23,6 +23,9 @@ func main() {
 	assetHandler := &handlers.AssetHandler{Repo: assetRepo}
 
 	r := chi.NewRouter()
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("ok"))
+	})
 	r.Post("/assets", assetHandler.CreateAsset)
 	r.Get("/assets", assetHandler.ListAssets)
 	r.Get("/assets/{id}", assetHandler.GetAsset)
