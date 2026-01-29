@@ -49,15 +49,6 @@ type ScanJob struct {
 }
 
 // ==========================
-// JSON Error Helper
-// ==========================
-func JSONError(w http.ResponseWriter, message string, status int) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]string{"error": message})
-}
-
-// ==========================
 // Create Asset
 // ==========================
 func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
@@ -67,7 +58,6 @@ func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validation
 	if input.Name == "" || input.Description == "" {
 		JSONError(w, "name and description are required", http.StatusBadRequest)
 		return
@@ -109,9 +99,9 @@ func (h *AssetHandler) ListAssets(w http.ResponseWriter, r *http.Request) {
 	var assets []models.Asset
 	var err error
 	if search != "" {
-		assets, err = h.Repo.SearchPaginated(search, limit, offset)
+		assets, err = h.Repo.Search(search, limit, offset)
 	} else {
-		assets, err = h.Repo.ListPaginated(limit, offset)
+		assets, err = h.Repo.List(limit, offset)
 	}
 	if err != nil {
 		JSONError(w, "failed to fetch assets", http.StatusInternalServerError)
@@ -133,7 +123,7 @@ func (h *AssetHandler) GetAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	asset, err := h.Repo.GetByID(id)
+	asset, err := h.Repo.Get(id)
 	if err != nil {
 		JSONError(w, "asset not found", http.StatusNotFound)
 		return
@@ -165,7 +155,7 @@ func (h *AssetHandler) UpdateAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	asset, err := h.Repo.UpdateByID(id, input.Name, input.Description)
+	asset, err := h.Repo.Update(id, input.Name, input.Description)
 	if err != nil {
 		JSONError(w, "failed to update asset", http.StatusInternalServerError)
 		return
@@ -186,7 +176,7 @@ func (h *AssetHandler) DeleteAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.Repo.DeleteByID(id); err != nil {
+	if err := h.Repo.Delete(id); err != nil {
 		JSONError(w, "failed to delete asset", http.StatusInternalServerError)
 		return
 	}
@@ -195,7 +185,7 @@ func (h *AssetHandler) DeleteAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 // ==========================
-// Start a Network Scan
+// Scan Handlers
 // ==========================
 func (h *AssetHandler) ScanNetwork(w http.ResponseWriter, r *http.Request) {
 	var body struct {
@@ -233,9 +223,6 @@ func (h *AssetHandler) ScanNetwork(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ==========================
-// Get Scan Status
-// ==========================
 func (h *AssetHandler) GetScanStatus(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "id")
 	h.scanJobsMu.Lock()
@@ -251,9 +238,6 @@ func (h *AssetHandler) GetScanStatus(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(job)
 }
 
-// ==========================
-// Cancel Scan Job
-// ==========================
 func (h *AssetHandler) CancelScan(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "id")
 	h.scanJobsMu.Lock()
@@ -267,7 +251,6 @@ func (h *AssetHandler) CancelScan(w http.ResponseWriter, r *http.Request) {
 
 	select {
 	case <-job.cancelCh:
-		// already canceled
 	default:
 		close(job.cancelCh)
 	}
@@ -324,7 +307,7 @@ func (h *AssetHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 			}
 			desc := "Discovered device"
 			asset, _ := h.Repo.Create(name+" ("+ip+")", desc)
-			discovered = append(discovered, asset)
+			discovered = append(discovered, *asset)
 		}
 	}
 

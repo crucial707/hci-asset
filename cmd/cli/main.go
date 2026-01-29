@@ -1,27 +1,36 @@
 package main
 
 import (
-	"fmt"
-	"os"
+	"log"
+
+	"github.com/spf13/cobra"
 
 	"github.com/crucial707/hci-asset/cmd/cli/assets"
-	"github.com/crucial707/hci-asset/cmd/cli/root"
-	"github.com/crucial707/hci-asset/cmd/cli/scan"
 	"github.com/crucial707/hci-asset/cmd/cli/users"
 )
 
 func main() {
-	// Get the root command
-	rootCmd := root.GetRoot()
 
-	// Initialize CLI modules
-	users.InitUsers(rootCmd)   // user creation, login, logout
-	assets.InitAssets(rootCmd) // asset listing, create, update, delete
-	scan.InitScan(rootCmd)     // network scan commands
+	// ==========================
+	// Root Command
+	// ==========================
+	rootCmd := &cobra.Command{
+		Use:   "hci-asset",
+		Short: "HCI Asset Management CLI",
+		Long:  "Command-line interface for managing assets, users, and network scans.",
+	}
 
-	// Execute the CLI
+	// ==========================
+	// Attach CLI Modules
+	// ==========================
+	assets.InitAssets(rootCmd)
+	users.InitUsers(rootCmd)
+	//	scan.InitScan(rootCmd)
+
+	// ==========================
+	// Execute CLI
+	// ==========================
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		log.Fatalf("error executing CLI: %v", err)
 	}
 }
