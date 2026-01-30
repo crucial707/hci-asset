@@ -9,7 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/crucial707/hci-asset/cmd/cli/output"
 	"github.com/crucial707/hci-asset/internal/handlers"
+	"github.com/crucial707/hci-asset/internal/models"
 )
 
 // ==========================
@@ -38,7 +40,7 @@ func InitAssets(rootCmd *cobra.Command, assetHandler *handlers.AssetHandler) {
 }
 
 // ==========================
-// List Assets
+// List Assets (Pretty Table)
 // ==========================
 func listAssetsCmd() *cobra.Command {
 	return &cobra.Command{
@@ -51,8 +53,30 @@ func listAssetsCmd() *cobra.Command {
 				return
 			}
 			defer resp.Body.Close()
-			body, _ := io.ReadAll(resp.Body)
-			fmt.Println(string(body))
+
+			var assets []models.Asset
+			if err := json.NewDecoder(resp.Body).Decode(&assets); err != nil {
+				fmt.Println("Failed to parse response:", err)
+				return
+			}
+
+			if len(assets) == 0 {
+				fmt.Println("No assets found.")
+				return
+			}
+
+			headers := []string{"ID", "Name", "Description"}
+
+			rows := [][]interface{}{}
+			for _, a := range assets {
+				rows = append(rows, []interface{}{
+					a.ID,
+					a.Name,
+					a.Description,
+				})
+			}
+
+			output.RenderTable(headers, rows)
 		},
 	}
 }
