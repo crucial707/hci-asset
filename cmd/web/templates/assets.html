@@ -1,0 +1,18 @@
+{{define "content"}}
+<h1>Assets</h1>
+{{if .Error}}<p class="error">{{.Error}}</p>{{else}}
+<table>
+  <thead><tr><th>ID</th><th>Name</th><th>IP / Network</th><th>Description</th><th></th></tr></thead>
+  <tbody>
+  {{range .Assets}}<tr>
+    <td>{{.ID}}</td>
+    <td>{{.Name}}</td>
+    <td>{{.NetworkName}}</td>
+    <td>{{.Description}}</td>
+    <td><a href="/assets/{{.ID}}">View</a></td>
+  </tr>{{end}}
+  </tbody>
+</table>
+{{if not .Assets}}<p>No assets.</p>{{end}}
+{{end}}
+{{end}}

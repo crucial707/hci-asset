@@ -1,0 +1,22 @@
+{{define "login"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Log in – HCI Asset</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.min.css">
+  <style> body { max-width: 400px; margin: 2rem auto; } .error { color: #c00; } </style>
+</head>
+<body>
+  <h1>HCI Asset</h1>
+  {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+  <form method="post" action="/login">
+    <label for="username">Username</label>
+    <input id="username" name="username" type="text" required autofocus>
+    <button type="submit">Log in</button>
+  </form>
+  <p><small>Register first via CLI: <code>hci-asset login --username you --register</code></small></p>
+</body>
+</html>
+{{end}}

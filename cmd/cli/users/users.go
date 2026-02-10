@@ -41,7 +41,10 @@ func listUsersCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List all users",
 		Run: func(cmd *cobra.Command, args []string) {
-			resp, err := http.Get(config.APIURL() + "/users")
+			req, _ := http.NewRequest("GET", config.APIURL()+"/users", nil)
+			config.AddAuthHeader(req)
+
+			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				fmt.Println("API request failed:", err)
 				return
@@ -114,8 +117,11 @@ func createUserCmd() *cobra.Command {
 				"password": password,
 			}
 			data, _ := json.Marshal(payload)
+			req, _ := http.NewRequest("POST", config.APIURL()+"/users", bytes.NewBuffer(data))
+			req.Header.Set("Content-Type", "application/json")
+			config.AddAuthHeader(req)
 
-			resp, err := http.Post(config.APIURL()+"/users", "application/json", bytes.NewBuffer(data))
+			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				fmt.Println("API request failed:", err)
 				return
@@ -166,6 +172,7 @@ func updateUserCmd() *cobra.Command {
 			data, _ := json.Marshal(payload)
 			req, _ := http.NewRequest("PUT", config.APIURL()+"/users/"+id, bytes.NewBuffer(data))
 			req.Header.Set("Content-Type", "application/json")
+			config.AddAuthHeader(req)
 
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
@@ -202,6 +209,8 @@ func deleteUserCmd() *cobra.Command {
 			id := args[0]
 
 			req, _ := http.NewRequest("DELETE", config.APIURL()+"/users/"+id, nil)
+			config.AddAuthHeader(req)
+
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				fmt.Println("API request failed:", err)

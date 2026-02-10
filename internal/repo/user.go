@@ -130,3 +130,25 @@ func (r *UserRepo) Delete(id int) error {
 
 	return nil
 }
+
+// ==========================
+// List Users
+// ==========================
+func (r *UserRepo) List() ([]models.User, error) {
+	rows, err := r.DB.Query(`SELECT id, username FROM users ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []models.User
+	for rows.Next() {
+		var u models.User
+		if err := rows.Scan(&u.ID, &u.Username); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+
+	return users, nil
+}

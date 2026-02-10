@@ -1,16 +1,16 @@
 package main
 
 import (
+	"database/sql"
 	"log"
 	"syscall"
 
 	"github.com/spf13/cobra"
 
 	"github.com/crucial707/hci-asset/cmd/cli/assets"
+	"github.com/crucial707/hci-asset/cmd/cli/auth"
 	"github.com/crucial707/hci-asset/cmd/cli/scan"
 	"github.com/crucial707/hci-asset/cmd/cli/users"
-
-	"database/sql"
 
 	"github.com/crucial707/hci-asset/internal/handlers"
 	"github.com/crucial707/hci-asset/internal/repo"
@@ -65,6 +65,7 @@ func main() {
 	assets.InitAssets(rootCmd, assetHandler)
 	users.InitUsers(rootCmd)
 	scan.InitScan(rootCmd)
+	auth.InitAuth(rootCmd)
 
 	// ==========================
 	// Execute CLI

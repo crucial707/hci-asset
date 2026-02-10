@@ -154,7 +154,23 @@ func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 			}
 
 			desc := "Discovered device"
-			asset, _ := h.Repo.Create(name+" ("+ip+")", desc)
+			displayName := name
+			if displayName == "" {
+				displayName = ip
+			}
+
+			asset, err := h.Repo.UpsertDiscovered(displayName, desc)
+			if err != nil {
+				// Best-effort: log in job error but continue scanning others
+				if job.Error == "" {
+					job.Error = "one or more assets failed to upsert"
+				}
+				continue
+			}
+
+			// Attach network info in-memory for the response
+			asset.NetworkName = ip
+
 			discovered = append(discovered, *asset)
 		}
 	}

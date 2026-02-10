@@ -1,0 +1,27 @@
+{{define "layout"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HCI Asset – {{block "title" .}}Dashboard{{end}}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.min.css">
+  <style>
+    body { max-width: 960px; margin: 0 auto; padding: 1rem; }
+    nav { margin-bottom: 1.5rem; }
+    nav a { margin-right: 1rem; }
+    .error { color: #c00; }
+    table { width: 100%; }
+    th, td { text-align: left; padding: 0.5rem; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/dashboard">Dashboard</a>
+    <a href="/assets">Assets</a>
+    <a href="/logout">Log out</a>
+  </nav>
+  {{template "content" .}}
+</body>
+</html>
+{{end}}

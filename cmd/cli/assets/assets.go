@@ -43,7 +43,10 @@ func listAssetsCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List all assets",
 		Run: func(cmd *cobra.Command, args []string) {
-			resp, err := http.Get(config.APIURL() + "/assets")
+			req, _ := http.NewRequest("GET", config.APIURL()+"/assets", nil)
+			config.AddAuthHeader(req)
+
+			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				fmt.Println("API request failed:", err)
 				return
@@ -112,8 +115,11 @@ func createAssetCmd() *cobra.Command {
 				"description": description,
 			}
 			data, _ := json.Marshal(payload)
+			req, _ := http.NewRequest("POST", config.APIURL()+"/assets", bytes.NewBuffer(data))
+			req.Header.Set("Content-Type", "application/json")
+			config.AddAuthHeader(req)
 
-			resp, err := http.Post(config.APIURL()+"/assets", "application/json", bytes.NewBuffer(data))
+			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				fmt.Println("API request failed:", err)
 				return
@@ -164,6 +170,7 @@ func updateAssetCmd() *cobra.Command {
 			data, _ := json.Marshal(payload)
 			req, _ := http.NewRequest("PUT", config.APIURL()+"/assets/"+id, bytes.NewBuffer(data))
 			req.Header.Set("Content-Type", "application/json")
+			config.AddAuthHeader(req)
 
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
@@ -200,6 +207,8 @@ func deleteAssetCmd() *cobra.Command {
 			id := args[0]
 
 			req, _ := http.NewRequest("DELETE", config.APIURL()+"/assets/"+id, nil)
+			config.AddAuthHeader(req)
+
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				fmt.Println("API request failed:", err)

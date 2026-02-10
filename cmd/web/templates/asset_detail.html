@@ -1,0 +1,13 @@
+{{define "content"}}
+{{if .Error}}<p class="error">{{.Error}}</p>{{else}}
+<p><a href="/assets">← Assets</a></p>
+<h1>Asset: {{.Asset.Name}}</h1>
+<table>
+  <tr><th>ID</th><td>{{.Asset.ID}}</td></tr>
+  <tr><th>Name</th><td>{{.Asset.Name}}</td></tr>
+  <tr><th>Description</th><td>{{.Asset.Description}}</td></tr>
+  {{if .Asset.NetworkName}}<tr><th>Network / IP</th><td>{{.Asset.NetworkName}}</td></tr>{{end}}
+  {{if .Asset.CreatedAt}}<tr><th>Created</th><td>{{.Asset.CreatedAt}}</td></tr>{{end}}
+</table>
+{{end}}
+{{end}}

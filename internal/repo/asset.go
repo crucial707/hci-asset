@@ -2,6 +2,7 @@ package repo
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -11,6 +12,9 @@ import (
 type AssetRepo struct {
 	db *sql.DB
 }
+
+// ErrAssetNotFound is returned when an asset cannot be found.
+var ErrAssetNotFound = errors.New("asset not found")
 
 // ==========================
 // Constructor
@@ -36,6 +40,50 @@ func (r *AssetRepo) Create(name, description string) (*models.Asset, error) {
 		Name:        name,
 		Description: description,
 	}, nil
+}
+
+// ==========================
+// Find asset by name
+// ==========================
+func (r *AssetRepo) FindByName(name string) (*models.Asset, error) {
+	var a models.Asset
+	err := r.db.QueryRow(
+		"SELECT id, name, description FROM assets WHERE name=$1",
+		name,
+	).Scan(&a.ID, &a.Name, &a.Description)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrAssetNotFound
+		}
+		return nil, err
+	}
+	return &a, nil
+}
+
+// ==========================
+// Upsert discovered asset (idempotent)
+// ==========================
+// UpsertDiscovered either finds an existing asset by name or creates it.
+// This is primarily used by scan jobs to avoid duplicating assets.
+func (r *AssetRepo) UpsertDiscovered(name, description string) (*models.Asset, error) {
+	a, err := r.FindByName(name)
+	if err == nil {
+		// Optionally update description if it has changed, but avoid errors
+		if a.Description != description {
+			updated, updateErr := r.Update(a.ID, a.Name, description)
+			if updateErr == nil {
+				return updated, nil
+			}
+		}
+		return a, nil
+	}
+
+	// If not found, create a new asset
+	if errors.Is(err, ErrAssetNotFound) {
+		return r.Create(name, description)
+	}
+
+	return nil, err
 }
 
 // ==========================
