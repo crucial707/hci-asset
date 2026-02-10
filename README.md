@@ -66,6 +66,53 @@ hci-asset-api"
 If PostgreSQL is running on your host machine, use:
 "DB_HOST=host.docker.internal"
 
+--------------------------------------------------------------------
+
+## CLI Usage
+
+The repository also includes a Go-based CLI for interacting with the API.
+
+- **Binary name**: `hci-asset`
+- **Commands**:
+  - `hci-asset assets list` – list assets in a go-pretty table (or JSON with `--json`)
+  - `hci-asset users list` – list users in a go-pretty table (or JSON with `--json`)
+  - `hci-asset scan start [target]` – start a network scan
+  - `hci-asset scan status [jobID]` – check scan status and discovered assets (table output)
+  - `hci-asset scan cancel [jobID]` – cancel a running scan and show any discovered assets
+
+### CLI Configuration
+
+- **API URL**: The CLI talks to the API via a base URL.
+  - Default: `http://localhost:8080`
+  - Override with environment variable:
+
+    ```bash
+    export HCI_ASSET_API_URL="http://localhost:8080"
+    ```
+
+    (Point this at your dev/stage/prod API as needed.)
+
+### Example CLI commands
+
+```bash
+# List assets in a table
+hci-asset assets list
+
+# List assets as raw JSON
+hci-asset assets list --json
+
+# List users in a table
+hci-asset users list
+
+# Start a scan
+hci-asset scan start 192.168.1.0/24
+
+# Check scan status
+hci-asset scan status 1
+```
+
+--------------------------------------------------------------------
+
 =Verify the API is Running=
 "curl http://localhost:8080/health"
 

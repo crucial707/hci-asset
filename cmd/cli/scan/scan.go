@@ -7,14 +7,10 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/crucial707/hci-asset/cmd/cli/config"
 	"github.com/crucial707/hci-asset/cmd/cli/output"
 	"github.com/spf13/cobra"
 )
-
-// ==========================
-// CLI API URL
-// ==========================
-var apiURL = "http://localhost:8080"
 
 // ==========================
 // Types
@@ -62,7 +58,7 @@ func startScanCmd() *cobra.Command {
 			payload := map[string]string{"target": target}
 			data, _ := json.Marshal(payload)
 
-			resp, err := http.Post(apiURL+"/scan", "application/json", bytes.NewBuffer(data))
+			resp, err := http.Post(config.APIURL()+"/scan", "application/json", bytes.NewBuffer(data))
 			if err != nil {
 				fmt.Println("Failed to start scan:", err)
 				return
@@ -101,7 +97,7 @@ func statusScanCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			jobID := args[0]
-			resp, err := http.Get(apiURL + "/scan/" + jobID)
+			resp, err := http.Get(config.APIURL() + "/scan/" + jobID)
 			if err != nil {
 				fmt.Println("Failed to get scan status:", err)
 				return
@@ -158,7 +154,7 @@ func cancelScanCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			jobID := args[0]
 
-			req, _ := http.NewRequest("POST", apiURL+"/scan/"+jobID+"/cancel", nil)
+			req, _ := http.NewRequest("POST", config.APIURL()+"/scan/"+jobID+"/cancel", nil)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				fmt.Println("Failed to cancel scan:", err)

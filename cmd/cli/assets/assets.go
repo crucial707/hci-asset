@@ -9,15 +9,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/crucial707/hci-asset/cmd/cli/config"
 	"github.com/crucial707/hci-asset/cmd/cli/output"
 	"github.com/crucial707/hci-asset/internal/handlers"
 	"github.com/crucial707/hci-asset/internal/models"
 )
-
-// ==========================
-// CLI API URL
-// ==========================
-var apiURL = "http://localhost:8080"
 
 // ==========================
 // Initialize Assets CLI
@@ -43,11 +39,11 @@ func InitAssets(rootCmd *cobra.Command, assetHandler *handlers.AssetHandler) {
 // List Assets (Pretty Table)
 // ==========================
 func listAssetsCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all assets",
 		Run: func(cmd *cobra.Command, args []string) {
-			resp, err := http.Get(apiURL + "/assets")
+			resp, err := http.Get(config.APIURL() + "/assets")
 			if err != nil {
 				fmt.Println("API request failed:", err)
 				return
@@ -65,6 +61,18 @@ func listAssetsCmd() *cobra.Command {
 				return
 			}
 
+			// Optional JSON output for scripting
+			jsonOutput, _ := cmd.Flags().GetBool("json")
+			if jsonOutput {
+				out, err := json.MarshalIndent(assets, "", "  ")
+				if err != nil {
+					fmt.Println("Failed to encode JSON:", err)
+					return
+				}
+				fmt.Println(string(out))
+				return
+			}
+
 			headers := []string{"ID", "Name", "Description"}
 
 			rows := [][]interface{}{}
@@ -79,6 +87,9 @@ func listAssetsCmd() *cobra.Command {
 			output.RenderTable(headers, rows)
 		},
 	}
+
+	cmd.Flags().BoolP("json", "j", false, "Output raw JSON instead of formatted text")
+	return cmd
 }
 
 // ==========================
@@ -102,12 +113,19 @@ func createAssetCmd() *cobra.Command {
 			}
 			data, _ := json.Marshal(payload)
 
-			resp, err := http.Post(apiURL+"/assets", "application/json", bytes.NewBuffer(data))
+			resp, err := http.Post(config.APIURL()+"/assets", "application/json", bytes.NewBuffer(data))
 			if err != nil {
 				fmt.Println("API request failed:", err)
 				return
 			}
 			defer resp.Body.Close()
+
+			if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+				body, _ := io.ReadAll(resp.Body)
+				fmt.Printf("Failed to create asset (%d): %s\n", resp.StatusCode, string(body))
+				return
+			}
+
 			body, _ := io.ReadAll(resp.Body)
 			fmt.Println(string(body))
 		},
@@ -144,7 +162,7 @@ func updateAssetCmd() *cobra.Command {
 			}
 
 			data, _ := json.Marshal(payload)
-			req, _ := http.NewRequest("PUT", apiURL+"/assets/"+id, bytes.NewBuffer(data))
+			req, _ := http.NewRequest("PUT", config.APIURL()+"/assets/"+id, bytes.NewBuffer(data))
 			req.Header.Set("Content-Type", "application/json")
 
 			resp, err := http.DefaultClient.Do(req)
@@ -153,6 +171,13 @@ func updateAssetCmd() *cobra.Command {
 				return
 			}
 			defer resp.Body.Close()
+
+			if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+				body, _ := io.ReadAll(resp.Body)
+				fmt.Printf("Failed to update asset (%d): %s\n", resp.StatusCode, string(body))
+				return
+			}
+
 			body, _ := io.ReadAll(resp.Body)
 			fmt.Println(string(body))
 		},
@@ -174,7 +199,7 @@ func deleteAssetCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			id := args[0]
 
-			req, _ := http.NewRequest("DELETE", apiURL+"/assets/"+id, nil)
+			req, _ := http.NewRequest("DELETE", config.APIURL()+"/assets/"+id, nil)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				fmt.Println("API request failed:", err)
@@ -182,12 +207,13 @@ func deleteAssetCmd() *cobra.Command {
 			}
 			defer resp.Body.Close()
 
-			if resp.StatusCode == 204 {
+			if resp.StatusCode == http.StatusNoContent {
 				fmt.Println("Asset deleted successfully")
-			} else {
-				body, _ := io.ReadAll(resp.Body)
-				fmt.Println("Failed to delete asset:", string(body))
+				return
 			}
+
+			body, _ := io.ReadAll(resp.Body)
+			fmt.Printf("Failed to delete asset (%d): %s\n", resp.StatusCode, string(body))
 		},
 	}
 }

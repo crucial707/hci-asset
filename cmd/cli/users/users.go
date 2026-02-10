@@ -7,15 +7,11 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/crucial707/hci-asset/cmd/cli/config"
 	"github.com/crucial707/hci-asset/cmd/cli/output"
 	"github.com/crucial707/hci-asset/internal/models"
 	"github.com/spf13/cobra"
 )
-
-// ==========================
-// CLI API URL
-// ==========================
-var apiURL = "http://localhost:8080"
 
 // ==========================
 // Initialize Users CLI
@@ -41,11 +37,11 @@ func InitUsers(rootCmd *cobra.Command) {
 // List Users (Pretty Table)
 // ==========================
 func listUsersCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all users",
 		Run: func(cmd *cobra.Command, args []string) {
-			resp, err := http.Get(apiURL + "/users")
+			resp, err := http.Get(config.APIURL() + "/users")
 			if err != nil {
 				fmt.Println("API request failed:", err)
 				return
@@ -69,6 +65,18 @@ func listUsersCmd() *cobra.Command {
 				return
 			}
 
+			// Optional JSON output for scripting
+			jsonOutput, _ := cmd.Flags().GetBool("json")
+			if jsonOutput {
+				out, err := json.MarshalIndent(users, "", "  ")
+				if err != nil {
+					fmt.Println("Failed to encode JSON:", err)
+					return
+				}
+				fmt.Println(string(out))
+				return
+			}
+
 			headers := []string{"ID", "Username"}
 			rows := make([][]interface{}, 0, len(users))
 			for _, u := range users {
@@ -81,6 +89,9 @@ func listUsersCmd() *cobra.Command {
 			output.RenderTable(headers, rows)
 		},
 	}
+
+	cmd.Flags().BoolP("json", "j", false, "Output raw JSON instead of formatted text")
+	return cmd
 }
 
 // ==========================
@@ -104,12 +115,19 @@ func createUserCmd() *cobra.Command {
 			}
 			data, _ := json.Marshal(payload)
 
-			resp, err := http.Post(apiURL+"/users", "application/json", bytes.NewBuffer(data))
+			resp, err := http.Post(config.APIURL()+"/users", "application/json", bytes.NewBuffer(data))
 			if err != nil {
 				fmt.Println("API request failed:", err)
 				return
 			}
 			defer resp.Body.Close()
+
+			if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+				body, _ := io.ReadAll(resp.Body)
+				fmt.Printf("Failed to create user (%d): %s\n", resp.StatusCode, string(body))
+				return
+			}
+
 			body, _ := io.ReadAll(resp.Body)
 			fmt.Println(string(body))
 		},
@@ -146,7 +164,7 @@ func updateUserCmd() *cobra.Command {
 			}
 
 			data, _ := json.Marshal(payload)
-			req, _ := http.NewRequest("PUT", apiURL+"/users/"+id, bytes.NewBuffer(data))
+			req, _ := http.NewRequest("PUT", config.APIURL()+"/users/"+id, bytes.NewBuffer(data))
 			req.Header.Set("Content-Type", "application/json")
 
 			resp, err := http.DefaultClient.Do(req)
@@ -155,6 +173,13 @@ func updateUserCmd() *cobra.Command {
 				return
 			}
 			defer resp.Body.Close()
+
+			if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+				body, _ := io.ReadAll(resp.Body)
+				fmt.Printf("Failed to update user (%d): %s\n", resp.StatusCode, string(body))
+				return
+			}
+
 			body, _ := io.ReadAll(resp.Body)
 			fmt.Println(string(body))
 		},
@@ -176,7 +201,7 @@ func deleteUserCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			id := args[0]
 
-			req, _ := http.NewRequest("DELETE", apiURL+"/users/"+id, nil)
+			req, _ := http.NewRequest("DELETE", config.APIURL()+"/users/"+id, nil)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				fmt.Println("API request failed:", err)
