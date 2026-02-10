@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/crucial707/hci-asset/cmd/cli/output"
 	"github.com/spf13/cobra"
 )
 
@@ -14,6 +15,21 @@ import (
 // CLI API URL
 // ==========================
 var apiURL = "http://localhost:8080"
+
+// ==========================
+// Types
+// ==========================
+type scanJobResponse struct {
+	Target string `json:"target"`
+	Status string `json:"status"`
+	Assets []struct {
+		ID          int    `json:"id"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		CreatedAt   string `json:"created_at"`
+	} `json:"assets"`
+	Error string `json:"error,omitempty"`
+}
 
 // ==========================
 // Initialize Scan CLI
@@ -52,8 +68,25 @@ func startScanCmd() *cobra.Command {
 				return
 			}
 			defer resp.Body.Close()
-			body, _ := io.ReadAll(resp.Body)
-			fmt.Println(string(body))
+
+			if resp.StatusCode != http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
+				fmt.Printf("Failed to start scan: %s\n", string(body))
+				return
+			}
+
+			var result struct {
+				JobID  string `json:"job_id"`
+				Status string `json:"status"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+				fmt.Println("Failed to parse response:", err)
+				return
+			}
+
+			fmt.Println("Scan started successfully.")
+			fmt.Printf("Job ID: %s\n", result.JobID)
+			fmt.Printf("Status: %s\n", result.Status)
 		},
 	}
 }
@@ -74,8 +107,42 @@ func statusScanCmd() *cobra.Command {
 				return
 			}
 			defer resp.Body.Close()
-			body, _ := io.ReadAll(resp.Body)
-			fmt.Println(string(body))
+
+			if resp.StatusCode != http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
+				fmt.Printf("Failed to get scan status: %s\n", string(body))
+				return
+			}
+
+			var result scanJobResponse
+			if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+				fmt.Println("Failed to parse response:", err)
+				return
+			}
+
+			fmt.Printf("Scan Job ID: %s\n", jobID)
+			fmt.Printf("Target: %s\n", result.Target)
+			fmt.Printf("Status: %s\n", result.Status)
+			if result.Error != "" {
+				fmt.Printf("Error: %s\n", result.Error)
+			}
+
+			if len(result.Assets) > 0 {
+				fmt.Println("\nDiscovered Assets:")
+				headers := []string{"ID", "Name", "Description", "Created At"}
+				rows := make([][]interface{}, 0, len(result.Assets))
+				for _, a := range result.Assets {
+					rows = append(rows, []interface{}{
+						a.ID,
+						a.Name,
+						a.Description,
+						a.CreatedAt,
+					})
+				}
+				output.RenderTable(headers, rows)
+			} else {
+				fmt.Println("\nNo assets discovered yet.")
+			}
 		},
 	}
 }
@@ -98,8 +165,42 @@ func cancelScanCmd() *cobra.Command {
 				return
 			}
 			defer resp.Body.Close()
-			body, _ := io.ReadAll(resp.Body)
-			fmt.Println(string(body))
+
+			if resp.StatusCode != http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
+				fmt.Printf("Failed to cancel scan: %s\n", string(body))
+				return
+			}
+
+			var result scanJobResponse
+			if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+				fmt.Println("Failed to parse response:", err)
+				return
+			}
+
+			fmt.Printf("Scan Job ID: %s\n", jobID)
+			fmt.Printf("Target: %s\n", result.Target)
+			fmt.Printf("Status: %s\n", result.Status)
+			if result.Error != "" {
+				fmt.Printf("Error: %s\n", result.Error)
+			}
+
+			if len(result.Assets) > 0 {
+				fmt.Println("\nAssets discovered before cancellation:")
+				headers := []string{"ID", "Name", "Description", "Created At"}
+				rows := make([][]interface{}, 0, len(result.Assets))
+				for _, a := range result.Assets {
+					rows = append(rows, []interface{}{
+						a.ID,
+						a.Name,
+						a.Description,
+						a.CreatedAt,
+					})
+				}
+				output.RenderTable(headers, rows)
+			} else {
+				fmt.Println("\nNo assets discovered for this job.")
+			}
 		},
 	}
 }

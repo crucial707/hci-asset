@@ -3,9 +3,10 @@ package scan
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 
+	"github.com/crucial707/hci-asset/cmd/cli/output"
 	"github.com/crucial707/hci-asset/cmd/cli/root"
 	"github.com/spf13/cobra"
 )
@@ -40,8 +41,8 @@ func runScanStatus(cmd *cobra.Command, args []string) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("API error: %s", string(bodyBytes))
 	}
 
@@ -76,10 +77,17 @@ func runScanStatus(cmd *cobra.Command, args []string) error {
 
 	if len(result.Assets) > 0 {
 		fmt.Println("\nDiscovered Assets:")
+		headers := []string{"ID", "Name", "Description", "Created At"}
+		rows := make([][]interface{}, 0, len(result.Assets))
 		for _, a := range result.Assets {
-			fmt.Printf("- ID: %d, Name: %s, Description: %s, CreatedAt: %s\n",
-				a.ID, a.Name, a.Description, a.CreatedAt)
+			rows = append(rows, []interface{}{
+				a.ID,
+				a.Name,
+				a.Description,
+				a.CreatedAt,
+			})
 		}
+		output.RenderTable(headers, rows)
 	} else {
 		fmt.Println("\nNo assets discovered yet.")
 	}

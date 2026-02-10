@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/crucial707/hci-asset/cmd/cli/output"
+	"github.com/crucial707/hci-asset/internal/models"
 	"github.com/spf13/cobra"
 )
 
@@ -36,7 +38,7 @@ func InitUsers(rootCmd *cobra.Command) {
 }
 
 // ==========================
-// List Users
+// List Users (Pretty Table)
 // ==========================
 func listUsersCmd() *cobra.Command {
 	return &cobra.Command{
@@ -49,8 +51,34 @@ func listUsersCmd() *cobra.Command {
 				return
 			}
 			defer resp.Body.Close()
-			body, _ := io.ReadAll(resp.Body)
-			fmt.Println(string(body))
+
+			if resp.StatusCode != http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
+				fmt.Printf("Failed to list users: %s\n", string(body))
+				return
+			}
+
+			var users []models.User
+			if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+				fmt.Println("Failed to parse response:", err)
+				return
+			}
+
+			if len(users) == 0 {
+				fmt.Println("No users found.")
+				return
+			}
+
+			headers := []string{"ID", "Username"}
+			rows := make([][]interface{}, 0, len(users))
+			for _, u := range users {
+				rows = append(rows, []interface{}{
+					u.ID,
+					u.Username,
+				})
+			}
+
+			output.RenderTable(headers, rows)
 		},
 	}
 }
@@ -156,7 +184,7 @@ func deleteUserCmd() *cobra.Command {
 			}
 			defer resp.Body.Close()
 
-			if resp.StatusCode == 204 {
+			if resp.StatusCode == http.StatusNoContent {
 				fmt.Println("User deleted successfully")
 			} else {
 				body, _ := io.ReadAll(resp.Body)
