@@ -7,7 +7,7 @@
   <tr><th>Name</th><td>{{.Asset.Name}}</td></tr>
   <tr><th>Description</th><td>{{.Asset.Description}}</td></tr>
   {{if .Asset.NetworkName}}<tr><th>Network / IP</th><td>{{.Asset.NetworkName}}</td></tr>{{end}}
-  {{if .Asset.CreatedAt}}<tr><th>Created</th><td>{{.Asset.CreatedAt}}</td></tr>{{end}}
+  <tr><th>Last seen</th><td>{{if .Asset.LastSeen}}{{.Asset.LastSeen}}{{else}}Never{{end}}</td></tr>
 </table>
 {{end}}
 {{end}}

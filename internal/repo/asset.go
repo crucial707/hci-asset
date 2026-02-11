@@ -47,15 +47,19 @@ func (r *AssetRepo) Create(name, description string) (*models.Asset, error) {
 // ==========================
 func (r *AssetRepo) FindByName(name string) (*models.Asset, error) {
 	var a models.Asset
+	var lastSeen sql.NullTime
 	err := r.db.QueryRow(
-		"SELECT id, name, description FROM assets WHERE name=$1",
+		"SELECT id, name, description, last_seen FROM assets WHERE name=$1",
 		name,
-	).Scan(&a.ID, &a.Name, &a.Description)
+	).Scan(&a.ID, &a.Name, &a.Description, &lastSeen)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrAssetNotFound
 		}
 		return nil, err
+	}
+	if lastSeen.Valid {
+		a.LastSeen = &lastSeen.Time
 	}
 	return &a, nil
 }
@@ -91,7 +95,7 @@ func (r *AssetRepo) UpsertDiscovered(name, description string) (*models.Asset, e
 // ==========================
 func (r *AssetRepo) List(limit, offset int) ([]models.Asset, error) {
 	rows, err := r.db.Query(
-		"SELECT id, name, description FROM assets ORDER BY id LIMIT $1 OFFSET $2",
+		"SELECT id, name, description, last_seen FROM assets ORDER BY id LIMIT $1 OFFSET $2",
 		limit, offset,
 	)
 	if err != nil {
@@ -102,8 +106,12 @@ func (r *AssetRepo) List(limit, offset int) ([]models.Asset, error) {
 	var assets []models.Asset
 	for rows.Next() {
 		var a models.Asset
-		if err := rows.Scan(&a.ID, &a.Name, &a.Description); err != nil {
+		var lastSeen sql.NullTime
+		if err := rows.Scan(&a.ID, &a.Name, &a.Description, &lastSeen); err != nil {
 			return nil, err
+		}
+		if lastSeen.Valid {
+			a.LastSeen = &lastSeen.Time
 		}
 		assets = append(assets, a)
 	}
@@ -117,7 +125,7 @@ func (r *AssetRepo) List(limit, offset int) ([]models.Asset, error) {
 func (r *AssetRepo) Search(query string, limit, offset int) ([]models.Asset, error) {
 	likeQuery := "%" + strings.ToLower(query) + "%"
 	rows, err := r.db.Query(
-		"SELECT id, name, description FROM assets WHERE LOWER(name) LIKE $1 OR LOWER(description) LIKE $1 ORDER BY id LIMIT $2 OFFSET $3",
+		"SELECT id, name, description, last_seen FROM assets WHERE LOWER(name) LIKE $1 OR LOWER(description) LIKE $1 ORDER BY id LIMIT $2 OFFSET $3",
 		likeQuery, limit, offset,
 	)
 	if err != nil {
@@ -128,8 +136,12 @@ func (r *AssetRepo) Search(query string, limit, offset int) ([]models.Asset, err
 	var assets []models.Asset
 	for rows.Next() {
 		var a models.Asset
-		if err := rows.Scan(&a.ID, &a.Name, &a.Description); err != nil {
+		var lastSeen sql.NullTime
+		if err := rows.Scan(&a.ID, &a.Name, &a.Description, &lastSeen); err != nil {
 			return nil, err
+		}
+		if lastSeen.Valid {
+			a.LastSeen = &lastSeen.Time
 		}
 		assets = append(assets, a)
 	}
@@ -142,16 +154,38 @@ func (r *AssetRepo) Search(query string, limit, offset int) ([]models.Asset, err
 // ==========================
 func (r *AssetRepo) Get(id int) (*models.Asset, error) {
 	var a models.Asset
+	var lastSeen sql.NullTime
 	err := r.db.QueryRow(
-		"SELECT id, name, description FROM assets WHERE id=$1", id,
-	).Scan(&a.ID, &a.Name, &a.Description)
+		"SELECT id, name, description, last_seen FROM assets WHERE id=$1", id,
+	).Scan(&a.ID, &a.Name, &a.Description, &lastSeen)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("asset not found")
 		}
 		return nil, err
 	}
+	if lastSeen.Valid {
+		a.LastSeen = &lastSeen.Time
+	}
 	return &a, nil
+}
+
+// ==========================
+// Heartbeat updates last_seen for an asset (e.g. agent check-in).
+// ==========================
+func (r *AssetRepo) Heartbeat(id int) (*models.Asset, error) {
+	res, err := r.db.Exec("UPDATE assets SET last_seen = NOW() WHERE id = $1", id)
+	if err != nil {
+		return nil, err
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if rowsAffected == 0 {
+		return nil, fmt.Errorf("asset not found")
+	}
+	return r.Get(id)
 }
 
 // ==========================
@@ -172,12 +206,7 @@ func (r *AssetRepo) Update(id int, name, description string) (*models.Asset, err
 	if rowsAffected == 0 {
 		return nil, fmt.Errorf("asset not found")
 	}
-
-	return &models.Asset{
-		ID:          id,
-		Name:        name,
-		Description: description,
-	}, nil
+	return r.Get(id)
 }
 
 // ==========================

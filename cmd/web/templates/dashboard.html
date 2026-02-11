@@ -5,12 +5,13 @@
 {{if .Assets}}
 <h2>Recent assets</h2>
 <table>
-  <thead><tr><th>ID</th><th>Name</th><th>Description</th><th></th></tr></thead>
+  <thead><tr><th>ID</th><th>Name</th><th>Description</th><th>Last seen</th><th></th></tr></thead>
   <tbody>
   {{range .Assets}}<tr>
     <td>{{.ID}}</td>
     <td>{{.Name}}</td>
     <td>{{.Description}}</td>
+    <td>{{if .LastSeen}}{{.LastSeen}}{{else}}Never{{end}}</td>
     <td><a href="/assets/{{.ID}}">View</a></td>
   </tr>{{end}}
   </tbody>

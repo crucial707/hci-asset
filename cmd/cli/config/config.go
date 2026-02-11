@@ -74,4 +74,3 @@ func tokenFilePath() (string, error) {
 	}
 	return filepath.Join(home, tokenDirName, tokenFileName), nil
 }
-

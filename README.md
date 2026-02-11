@@ -86,6 +86,11 @@ The API does **not** run migrations automatically. When using **docker-compose**
 
 - **Assets table**: If you use the migrations in `internal/db/migrations/`, run the assets migration first (e.g. the `*_create_assets_table.up.sql` file) in the same way, or ensure the table exists. The API will fail at startup with a clear message if the `users` table is missing.
 
+- **Asset heartbeat (last_seen)**: To support asset heartbeat, add the `last_seen` column to `assets`:
+  ```powershell
+  docker exec -i asset-postgres psql -U assetuser -d assetdb -c "ALTER TABLE assets ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ NULL;"
+  ```
+
 --------------------------------------------------------------------
 
 ## CLI Usage
@@ -110,7 +115,8 @@ The repository also includes a Go-based CLI for interacting with the API.
   To use `hci-asset` from anywhere, add the folder containing `hci-asset.exe` to your PATH.
 
 - **Commands** (shown as `hci-asset`; use `go run ./cmd/cli` or `.\hci-asset.exe` if not on PATH):
-  - `hci-asset assets list` – list assets in a go-pretty table (or JSON with `--json`)
+  - `hci-asset assets list` – list assets in a go-pretty table (or JSON with `--json`); includes **last seen** (heartbeat)
+  - `hci-asset assets heartbeat [id]` – record a heartbeat for an asset (updates `last_seen`)
   - `hci-asset users list` – list users in a go-pretty table (or JSON with `--json`)
   - `hci-asset scan start [target]` – start a network scan
   - `hci-asset scan status [jobID]` – check scan status and discovered assets (table output)

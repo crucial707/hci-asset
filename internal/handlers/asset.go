@@ -148,6 +148,31 @@ func (h *AssetHandler) UpdateAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 // ==========================
+// Heartbeat updates last_seen for an asset (agent check-in).
+// ==========================
+func (h *AssetHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		JSONError(w, "invalid asset id", http.StatusBadRequest)
+		return
+	}
+
+	asset, err := h.Repo.Heartbeat(id)
+	if err != nil {
+		if err.Error() == "asset not found" {
+			JSONError(w, "asset not found", http.StatusNotFound)
+			return
+		}
+		JSONError(w, "failed to record heartbeat", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(asset)
+}
+
+// ==========================
 // Delete Asset
 // ==========================
 func (h *AssetHandler) DeleteAsset(w http.ResponseWriter, r *http.Request) {

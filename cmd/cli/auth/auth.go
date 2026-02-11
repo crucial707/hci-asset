@@ -6,10 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/crucial707/hci-asset/cmd/cli/config"
 	"github.com/spf13/cobra"
@@ -70,46 +66,18 @@ func loginCmd() *cobra.Command {
 }
 
 func callJSONEndpoint(client *http.Client, path string, payload interface{}, out interface{}) error {
-	// #region agent log
-	urlStr := config.APIURL() + path
-	func() {
-		_ = os.MkdirAll("c:/Users/AB/Code/New folder/hci-asset/.cursor", 0755)
-		f, err := os.OpenFile("c:/Users/AB/Code/New folder/hci-asset/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err == nil {
-			u, _ := json.Marshal(urlStr)
-			fmt.Fprintln(f, `{"hypothesisId":"H-C1","location":"cmd/cli/auth/auth.go:callJSONEndpoint","message":"CLI calling API","data":{"url":`+string(u)+`},"timestamp":`+strconv.FormatInt(time.Now().UnixMilli(), 10)+`}`)
-			f.Close()
-		}
-	}()
-	// #endregion
-
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequest("POST", urlStr, bytes.NewBuffer(data))
+	req, err := http.NewRequest("POST", config.APIURL()+path, bytes.NewBuffer(data))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
-	// #region agent log
-	func() {
-		_ = os.MkdirAll("c:/Users/AB/Code/New folder/hci-asset/.cursor", 0755)
-		f, e := os.OpenFile("c:/Users/AB/Code/New folder/hci-asset/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if e == nil {
-			if err != nil {
-				msg, _ := json.Marshal(err.Error())
-				fmt.Fprintln(f, `{"hypothesisId":"H-C1","location":"cmd/cli/auth/auth.go:callJSONEndpoint","message":"CLI Do error","data":{"error":`+string(msg)+`},"timestamp":`+strconv.FormatInt(time.Now().UnixMilli(), 10)+`}`)
-			} else {
-				fmt.Fprintln(f, `{"hypothesisId":"H-C2","location":"cmd/cli/auth/auth.go:callJSONEndpoint","message":"CLI response status","data":{"status":`+strconv.Itoa(resp.StatusCode)+`},"timestamp":`+strconv.FormatInt(time.Now().UnixMilli(), 10)+`}`)
-			}
-			f.Close()
-		}
-	}()
-	// #endregion
 	if err != nil {
 		return err
 	}
@@ -117,21 +85,6 @@ func callJSONEndpoint(client *http.Client, path string, payload interface{}, out
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		// #region agent log
-		func() {
-			_ = os.MkdirAll("c:/Users/AB/Code/New folder/hci-asset/.cursor", 0755)
-			f, e := os.OpenFile("c:/Users/AB/Code/New folder/hci-asset/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-			if e == nil {
-				snippet := string(body)
-				if len(snippet) > 200 {
-					snippet = snippet[:200] + "..."
-				}
-				snippetEsc, _ := json.Marshal(snippet)
-				fmt.Fprintln(f, `{"hypothesisId":"H-C2","location":"cmd/cli/auth/auth.go:callJSONEndpoint","message":"CLI non-2xx body","data":{"status":`+strconv.Itoa(resp.StatusCode)+`,"bodySnippet":`+string(snippetEsc)+`},"timestamp":`+strconv.FormatInt(time.Now().UnixMilli(), 10)+`}`)
-				f.Close()
-			}
-		}()
-		// #endregion
 		return fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -139,17 +92,6 @@ func callJSONEndpoint(client *http.Client, path string, payload interface{}, out
 		if err := json.Unmarshal(body, out); err != nil {
 			return err
 		}
-		// #region agent log
-		func() {
-			_ = os.MkdirAll("c:/Users/AB/Code/New folder/hci-asset/.cursor", 0755)
-			f, e := os.OpenFile("c:/Users/AB/Code/New folder/hci-asset/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-			if e == nil {
-				hasToken := strings.Contains(string(body), `"token"`)
-				fmt.Fprintln(f, `{"hypothesisId":"H-C3","location":"cmd/cli/auth/auth.go:callJSONEndpoint","message":"CLI 2xx parse","data":{"bodyLen":`+strconv.Itoa(len(body))+`,"hasTokenKey":`+strconv.FormatBool(hasToken)+`},"timestamp":`+strconv.FormatInt(time.Now().UnixMilli(), 10)+`}`)
-				f.Close()
-			}
-		}()
-		// #endregion
 	}
 
 	return nil

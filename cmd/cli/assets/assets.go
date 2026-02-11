@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -29,6 +30,7 @@ func InitAssets(rootCmd *cobra.Command, assetHandler *handlers.AssetHandler) {
 		listAssetsCmd(),
 		createAssetCmd(),
 		updateAssetCmd(),
+		heartbeatAssetCmd(),
 		deleteAssetCmd(),
 	)
 
@@ -76,14 +78,19 @@ func listAssetsCmd() *cobra.Command {
 				return
 			}
 
-			headers := []string{"ID", "Name", "Description"}
+			headers := []string{"ID", "Name", "Description", "Last seen"}
 
 			rows := [][]interface{}{}
 			for _, a := range assets {
+				lastSeen := "Never"
+				if a.LastSeen != nil {
+					lastSeen = a.LastSeen.Format(time.RFC3339)
+				}
 				rows = append(rows, []interface{}{
 					a.ID,
 					a.Name,
 					a.Description,
+					lastSeen,
 				})
 			}
 
@@ -92,6 +99,47 @@ func listAssetsCmd() *cobra.Command {
 	}
 
 	cmd.Flags().BoolP("json", "j", false, "Output raw JSON instead of formatted text")
+	return cmd
+}
+
+// ==========================
+// Heartbeat Asset (update last_seen)
+// ==========================
+func heartbeatAssetCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "heartbeat [id]",
+		Short: "Record a heartbeat for an asset (updates last_seen)",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			id := args[0]
+			req, _ := http.NewRequest("POST", config.APIURL()+"/assets/"+id+"/heartbeat", nil)
+			config.AddAuthHeader(req)
+
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				fmt.Println("API request failed:", err)
+				return
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
+				fmt.Printf("Failed to record heartbeat (%d): %s\n", resp.StatusCode, string(body))
+				return
+			}
+
+			var asset models.Asset
+			if err := json.NewDecoder(resp.Body).Decode(&asset); err != nil {
+				fmt.Println("Failed to parse response:", err)
+				return
+			}
+			lastSeen := "Never"
+			if asset.LastSeen != nil {
+				lastSeen = asset.LastSeen.Format(time.RFC3339)
+			}
+			fmt.Printf("Heartbeat recorded for asset %s (id %d). Last seen: %s\n", asset.Name, asset.ID, lastSeen)
+		},
+	}
 	return cmd
 }
 

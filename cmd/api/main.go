@@ -72,6 +72,7 @@ func main() {
 	r.With(jwtMiddleware).Get("/assets", assetHandler.ListAssets)
 	r.With(jwtMiddleware).Get("/assets/{id}", assetHandler.GetAsset)
 	r.With(jwtMiddleware).Put("/assets/{id}", assetHandler.UpdateAsset)
+	r.With(jwtMiddleware).Post("/assets/{id}/heartbeat", assetHandler.Heartbeat)
 	r.With(jwtMiddleware).Delete("/assets/{id}", assetHandler.DeleteAsset)
 
 	// ====== User endpoints (protected) ======

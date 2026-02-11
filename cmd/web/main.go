@@ -10,9 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -30,17 +28,6 @@ const (
 )
 
 func main() {
-	// #region agent log
-	func() {
-		_ = os.MkdirAll("c:/Users/AB/Code/New folder/hci-asset/.cursor", 0755)
-		f, err := os.OpenFile("c:/Users/AB/Code/New folder/hci-asset/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err == nil {
-			fmt.Fprintln(f, `{"hypothesisId":"H-W1","location":"cmd/web/main.go:main","message":"web main entered","data":{},"timestamp":`+strconv.FormatInt(time.Now().UnixMilli(), 10)+`}`)
-			f.Close()
-		}
-	}()
-	// #endregion
-
 	port := getEnv(envWebPort, defaultPort)
 	apiBase := getEnv(envAPIURL, defaultAPI)
 
@@ -50,16 +37,6 @@ func main() {
 
 	// Health (no auth, no templates)
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		// #region agent log
-		func() {
-			_ = os.MkdirAll("c:/Users/AB/Code/New folder/hci-asset/.cursor", 0755)
-			f, err := os.OpenFile("c:/Users/AB/Code/New folder/hci-asset/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-			if err == nil {
-				fmt.Fprintln(f, `{"hypothesisId":"H-W3","location":"cmd/web/main.go:/health","message":"health handler hit","data":{},"timestamp":`+strconv.FormatInt(time.Now().UnixMilli(), 10)+`}`)
-				f.Close()
-			}
-		}()
-		// #endregion
 		w.Write([]byte("ok"))
 	})
 
@@ -78,28 +55,7 @@ func main() {
 	})
 
 	log.Printf("Web UI running on http://localhost:%s (API: %s)", port, apiBase)
-	// #region agent log
-	func() {
-		_ = os.MkdirAll("c:/Users/AB/Code/New folder/hci-asset/.cursor", 0755)
-		f, err := os.OpenFile("c:/Users/AB/Code/New folder/hci-asset/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err == nil {
-			fmt.Fprintln(f, `{"hypothesisId":"H-W2","location":"cmd/web/main.go:ListenAndServe","message":"about to listen","data":{"port":"`+port+`"},"timestamp":`+strconv.FormatInt(time.Now().UnixMilli(), 10)+`}`)
-			f.Close()
-		}
-	}()
-	// #endregion
 	if err := http.ListenAndServe(":"+port, r); err != nil {
-		// #region agent log
-		func() {
-			_ = os.MkdirAll("c:/Users/AB/Code/New folder/hci-asset/.cursor", 0755)
-			f, err2 := os.OpenFile("c:/Users/AB/Code/New folder/hci-asset/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-			if err2 == nil {
-				b, _ := json.Marshal(err.Error())
-				fmt.Fprintln(f, `{"hypothesisId":"H-W2","location":"cmd/web/main.go:ListenAndServe","message":"ListenAndServe failed","data":{"error":`+string(b)+`},"timestamp":`+strconv.FormatInt(time.Now().UnixMilli(), 10)+`}`)
-				f.Close()
-			}
-		}()
-		// #endregion
 		log.Fatal(err)
 	}
 }
@@ -237,9 +193,10 @@ func dashboard(apiBase string) http.HandlerFunc {
 		}
 
 		var assets []struct {
-			ID          int    `json:"id"`
-			Name        string `json:"name"`
-			Description string `json:"description"`
+			ID          int     `json:"id"`
+			Name        string  `json:"name"`
+			Description string  `json:"description"`
+			LastSeen    *string `json:"last_seen"`
 		}
 		if err := json.Unmarshal(data, &assets); err != nil {
 			renderTemplate(w, "dashboard.html", map[string]interface{}{"Error": "Invalid assets response"})
@@ -272,11 +229,11 @@ func assetsList(apiBase string) http.HandlerFunc {
 		}
 
 		var assets []struct {
-			ID          int    `json:"id"`
-			Name        string `json:"name"`
-			Description string `json:"description"`
-			NetworkName string `json:"network_name"`
-			CreatedAt   string `json:"created_at"`
+			ID          int     `json:"id"`
+			Name        string  `json:"name"`
+			Description string  `json:"description"`
+			NetworkName string  `json:"network_name"`
+			LastSeen    *string `json:"last_seen"`
 		}
 		if err := json.Unmarshal(data, &assets); err != nil {
 			renderTemplate(w, "assets.html", map[string]interface{}{"Error": "Invalid assets response"})
@@ -309,11 +266,11 @@ func assetDetail(apiBase string) http.HandlerFunc {
 		}
 
 		var asset struct {
-			ID          int    `json:"id"`
-			Name        string `json:"name"`
-			Description string `json:"description"`
-			NetworkName string `json:"network_name"`
-			CreatedAt   string `json:"created_at"`
+			ID          int     `json:"id"`
+			Name        string  `json:"name"`
+			Description string  `json:"description"`
+			NetworkName string  `json:"network_name"`
+			LastSeen    *string `json:"last_seen"`
 		}
 		if err := json.Unmarshal(data, &asset); err != nil {
 			renderTemplate(w, "asset_detail.html", map[string]interface{}{"Error": "Invalid asset response"})
