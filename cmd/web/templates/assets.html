@@ -2,6 +2,11 @@
 <h1>Assets</h1>
 {{if .Error}}<p class="error">{{.Error}}</p>{{else}}
 <p><a href="/assets/new">+ New asset</a></p>
+<form method="get" action="/assets" style="margin-bottom: 1rem;">
+  <input type="text" name="search" value="{{.SearchQuery}}" placeholder="Search by name or description">
+  <button type="submit">Search</button>
+  {{if .SearchQuery}}<a href="/assets">Clear</a>{{end}}
+</form>
 <table>
   <thead><tr><th>ID</th><th>Name</th><th>IP / Network</th><th>Description</th><th>Last seen</th><th></th></tr></thead>
   <tbody>

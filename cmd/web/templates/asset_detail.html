@@ -10,5 +10,8 @@
   {{if .Asset.NetworkName}}<tr><th>Network / IP</th><td>{{.Asset.NetworkName}}</td></tr>{{end}}
   <tr><th>Last seen</th><td>{{if .Asset.LastSeen}}{{.Asset.LastSeen}}{{else}}Never{{end}}</td></tr>
 </table>
+<form method="post" action="/assets/{{.Asset.ID}}/heartbeat" style="margin-top: 1rem;">
+  <button type="submit">Record heartbeat</button>
+</form>
 {{end}}
 {{end}}

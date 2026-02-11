@@ -55,6 +55,7 @@ func main() {
 		r.Post("/assets", assetCreate(apiBase))
 		r.Get("/assets", assetsList(apiBase))
 		r.Get("/assets/{id}", assetDetail(apiBase))
+		r.Post("/assets/{id}/heartbeat", assetHeartbeat(apiBase))
 		r.Get("/assets/{id}/edit", assetEditForm(apiBase))
 		r.Post("/assets/{id}/edit", assetUpdate(apiBase))
 		r.Get("/assets/{id}/delete", assetDeleteConfirm(apiBase))
@@ -290,13 +291,19 @@ func assetsList(apiBase string) http.HandlerFunc {
 			tok = token.Value
 		}
 
-		data, status, err := apiGet(apiBase, "/assets?limit=500", tok)
+		search := strings.TrimSpace(r.URL.Query().Get("search"))
+		path := "/assets?limit=500"
+		if search != "" {
+			path += "&search=" + url.QueryEscape(search)
+		}
+
+		data, status, err := apiGet(apiBase, path, tok)
 		if err != nil {
-			renderTemplate(w, "assets.html", map[string]interface{}{"Error": err.Error()})
+			renderTemplate(w, "assets.html", map[string]interface{}{"Error": err.Error(), "SearchQuery": search})
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "assets.html", map[string]interface{}{"Error": "API error: " + string(data)})
+			renderTemplate(w, "assets.html", map[string]interface{}{"Error": "API error: " + string(data), "SearchQuery": search})
 			return
 		}
 
@@ -308,12 +315,13 @@ func assetsList(apiBase string) http.HandlerFunc {
 			LastSeen    *string `json:"last_seen"`
 		}
 		if err := json.Unmarshal(data, &assets); err != nil {
-			renderTemplate(w, "assets.html", map[string]interface{}{"Error": "Invalid assets response"})
+			renderTemplate(w, "assets.html", map[string]interface{}{"Error": "Invalid assets response", "SearchQuery": search})
 			return
 		}
 
 		renderTemplate(w, "assets.html", map[string]interface{}{
-			"Assets": assets,
+			"Assets":     assets,
+			"SearchQuery": search,
 		})
 	}
 }
@@ -352,6 +360,29 @@ func assetDetail(apiBase string) http.HandlerFunc {
 		renderTemplate(w, "asset_detail.html", map[string]interface{}{
 			"Asset": asset,
 		})
+	}
+}
+
+func assetHeartbeat(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		_, status, err := apiPost(apiBase, "/assets/"+id+"/heartbeat", tok, []byte("{}"))
+		if err != nil {
+			renderTemplate(w, "asset_detail.html", map[string]interface{}{"Error": err.Error()})
+			return
+		}
+		if status != http.StatusOK {
+			// Redirect back to detail; page will show error via API on next load, or we could pass a query param
+			http.Redirect(w, r, "/assets/"+id+"?heartbeat_error=1", http.StatusFound)
+			return
+		}
+		http.Redirect(w, r, "/assets/"+id, http.StatusFound)
 	}
 }
 
