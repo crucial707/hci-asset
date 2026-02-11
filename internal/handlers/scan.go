@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/crucial707/hci-asset/internal/models"
 	"github.com/crucial707/hci-asset/internal/repo"
@@ -18,11 +19,13 @@ import (
 // ScanJob Struct
 // ==========================
 type ScanJob struct {
-	Target string         `json:"target"`
-	Status string         `json:"status"` // running, complete, canceled, error
-	Assets []models.Asset `json:"assets,omitempty"`
-	Error  string         `json:"error,omitempty"`
-	cancel chan struct{}  `json:"-"`
+	Target      string         `json:"target"`
+	Status      string         `json:"status"` // running, complete, canceled, error
+	StartedAt   time.Time      `json:"started_at"`
+	CompletedAt *time.Time     `json:"completed_at,omitempty"`
+	Assets      []models.Asset `json:"assets,omitempty"`
+	Error       string         `json:"error,omitempty"`
+	cancel      chan struct{}  `json:"-"`
 }
 
 // ==========================
@@ -52,9 +55,10 @@ func (h *ScanHandler) StartScan(w http.ResponseWriter, r *http.Request) {
 	}
 	jobID := strconv.Itoa(len(h.scanJobs) + 1)
 	job := &ScanJob{
-		Target: input.Target,
-		Status: "running",
-		cancel: make(chan struct{}),
+		Target:    input.Target,
+		Status:    "running",
+		StartedAt: time.Now(),
+		cancel:    make(chan struct{}),
 	}
 	h.scanJobs[jobID] = job
 	h.scanJobsMu.Unlock()
@@ -121,6 +125,8 @@ func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 
 	cmd := exec.Command("C:\\Program Files (x86)\\Nmap\\nmap.exe", "-sn", target)
 	outputBytes, err := cmd.CombinedOutput()
+	now := time.Now()
+	job.CompletedAt = &now
 	if err != nil {
 		job.Status = "error"
 		job.Error = err.Error()
@@ -135,6 +141,8 @@ func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 	for _, line := range lines {
 		select {
 		case <-cancelCh:
+			done := time.Now()
+			job.CompletedAt = &done
 			job.Status = "canceled"
 			return
 		default:
@@ -177,6 +185,8 @@ func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 
 	job.Assets = discovered
 	if job.Status != "canceled" {
+		done := time.Now()
+		job.CompletedAt = &done
 		job.Status = "complete"
 	}
 }

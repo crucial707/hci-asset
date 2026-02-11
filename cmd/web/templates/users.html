@@ -1,0 +1,18 @@
+{{define "title"}}Users{{end}}
+{{define "content"}}
+<h1>Users</h1>
+{{if .Error}}<p class="error">{{.Error}}</p>{{else}}
+<p><a href="/users/new">+ Add user</a></p>
+<table>
+  <thead><tr><th>ID</th><th>Username</th><th></th></tr></thead>
+  <tbody>
+  {{range .Users}}<tr>
+    <td>{{.ID}}</td>
+    <td>{{.Username}}</td>
+    <td><a href="/users/{{.ID}}/delete">Delete</a></td>
+  </tr>{{end}}
+  </tbody>
+</table>
+{{if not .Users}}<p>No users.</p>{{end}}
+{{end}}
+{{end}}

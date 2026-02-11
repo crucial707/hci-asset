@@ -1,8 +1,9 @@
 {{define "title"}}Scan {{.JobID}}{{end}}
 {{define "content"}}
+{{if .AutoRefresh}}<meta http-equiv="refresh" content="3">{{end}}
 <h1>Scan {{.JobID}}</h1>
 {{if .Error}}<p class="error">{{.Error}}</p><p><a href="/scans">Back to Scans</a></p>{{else}}
-<p><strong>Target:</strong> {{.Job.Target}} &nbsp; <strong>Status:</strong> {{.Job.Status}}</p>
+<p><strong>Target:</strong> {{.Job.Target}} &nbsp; <strong>Status:</strong> {{.Job.Status}}{{if .Elapsed}} &nbsp; <strong>Elapsed:</strong> {{.Elapsed}}{{end}}{{if .Duration}} &nbsp; <strong>Duration:</strong> {{.Duration}}{{end}}</p>
 {{if .Job.Error}}<p class="error">{{.Job.Error}}</p>{{end}}
 {{if eq .Job.Status "running"}}
 <form method="post" action="/scans/{{.JobID}}/cancel" style="margin-bottom: 1rem;">

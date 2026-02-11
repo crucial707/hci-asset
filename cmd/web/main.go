@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -58,6 +59,11 @@ func main() {
 		r.Post("/assets/{id}/edit", assetUpdate(apiBase))
 		r.Get("/assets/{id}/delete", assetDeleteConfirm(apiBase))
 		r.Post("/assets/{id}/delete", assetDelete(apiBase))
+		r.Get("/users", usersList(apiBase))
+		r.Get("/users/new", userCreateForm(apiBase))
+		r.Post("/users", userCreate(apiBase))
+		r.Get("/users/{id}/delete", userDeleteConfirm(apiBase))
+		r.Post("/users/{id}/delete", userDelete(apiBase))
 		r.Get("/scans", scanPage(apiBase))
 		r.Post("/scans", startScan(apiBase))
 		r.Get("/scans/{id}", scanDetail(apiBase))
@@ -75,6 +81,15 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// formatDuration returns a human-readable duration (e.g. "1m30s", "45s").
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	if d < time.Second {
+		return "0s"
+	}
+	return d.String()
 }
 
 // requireAuth redirects to /login if cookie is missing or invalid.
@@ -660,10 +675,12 @@ func scanDetail(apiBase string) http.HandlerFunc {
 		}
 
 		var job struct {
-			Target string `json:"target"`
-			Status string `json:"status"`
-			Error  string `json:"error"`
-			Assets []struct {
+			Target      string     `json:"target"`
+			Status      string     `json:"status"`
+			StartedAt   time.Time  `json:"started_at"`
+			CompletedAt *time.Time `json:"completed_at"`
+			Error       string     `json:"error"`
+			Assets      []struct {
 				ID          int    `json:"id"`
 				Name        string `json:"name"`
 				Description string `json:"description"`
@@ -675,10 +692,28 @@ func scanDetail(apiBase string) http.HandlerFunc {
 			return
 		}
 
-		renderTemplate(w, "scan_detail.html", map[string]interface{}{
-			"JobID": jobID,
-			"Job":   job,
-		})
+		var elapsed, duration string
+		if !job.StartedAt.IsZero() {
+			end := time.Now()
+			if job.CompletedAt != nil {
+				end = *job.CompletedAt
+			}
+			d := end.Sub(job.StartedAt).Round(time.Second)
+			if job.Status == "running" {
+				elapsed = formatDuration(d)
+			} else {
+				duration = formatDuration(d)
+			}
+		}
+
+		payload := map[string]interface{}{
+			"JobID":   jobID,
+			"Job":     job,
+			"Elapsed": elapsed,
+			"Duration": duration,
+			"AutoRefresh": job.Status == "running",
+		}
+		renderTemplate(w, "scan_detail.html", payload)
 	}
 }
 
@@ -701,6 +736,180 @@ func cancelScan(apiBase string) http.HandlerFunc {
 			return
 		}
 		http.Redirect(w, r, "/scans/"+jobID, http.StatusFound)
+	}
+}
+
+// ====== Users (Web UI) ======
+
+func usersList(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		data, status, err := apiGet(apiBase, "/users", tok)
+		if err != nil {
+			renderTemplate(w, "users.html", map[string]interface{}{"Error": err.Error()})
+			return
+		}
+		if status != http.StatusOK {
+			renderTemplate(w, "users.html", map[string]interface{}{"Error": "API error: " + string(data)})
+			return
+		}
+
+		var users []struct {
+			ID       int    `json:"id"`
+			Username string `json:"username"`
+		}
+		if err := json.Unmarshal(data, &users); err != nil {
+			renderTemplate(w, "users.html", map[string]interface{}{"Error": "Invalid users response"})
+			return
+		}
+
+		renderTemplate(w, "users.html", map[string]interface{}{
+			"Users": users,
+		})
+	}
+}
+
+func userCreateForm(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		renderTemplate(w, "user_form.html", map[string]interface{}{
+			"FormAction":  "/users",
+			"SubmitLabel": "Create user",
+		})
+	}
+}
+
+func userCreate(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
+		username := strings.TrimSpace(r.FormValue("username"))
+		if username == "" {
+			renderTemplate(w, "user_form.html", map[string]interface{}{
+				"Error":       "Username is required",
+				"FormAction":  "/users",
+				"SubmitLabel": "Create user",
+			})
+			return
+		}
+
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		body := []byte(fmt.Sprintf(`{"username":%q}`, username))
+		data, status, err := apiPost(apiBase, "/users", tok, body)
+		if err != nil {
+			renderTemplate(w, "user_form.html", map[string]interface{}{
+				"Error":       err.Error(),
+				"FormAction":  "/users",
+				"SubmitLabel": "Create user",
+			})
+			return
+		}
+		if status < http.StatusOK || status >= http.StatusMultipleChoices {
+			var errResp struct{ Error string }
+			_ = json.Unmarshal(data, &errResp)
+			msg := errResp.Error
+			if msg == "" {
+				msg = string(data)
+			}
+			renderTemplate(w, "user_form.html", map[string]interface{}{
+				"Error":       "API: " + msg,
+				"FormAction":  "/users",
+				"SubmitLabel": "Create user",
+			})
+			return
+		}
+
+		var user struct {
+			ID int `json:"id"`
+		}
+		if err := json.Unmarshal(data, &user); err != nil || user.ID == 0 {
+			renderTemplate(w, "user_form.html", map[string]interface{}{
+				"Error":       "Invalid create user response",
+				"FormAction":  "/users",
+				"SubmitLabel": "Create user",
+			})
+			return
+		}
+
+		http.Redirect(w, r, "/users", http.StatusFound)
+	}
+}
+
+func userDeleteConfirm(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		data, status, err := apiGet(apiBase, "/users/"+id, tok)
+		if err != nil {
+			renderTemplate(w, "user_delete_confirm.html", map[string]interface{}{"Error": err.Error(), "UserID": id})
+			return
+		}
+		if status != http.StatusOK {
+			renderTemplate(w, "user_delete_confirm.html", map[string]interface{}{"Error": "User not found or API error", "UserID": id})
+			return
+		}
+
+		var user struct {
+			ID       int    `json:"id"`
+			Username string `json:"username"`
+		}
+		if err := json.Unmarshal(data, &user); err != nil {
+			renderTemplate(w, "user_delete_confirm.html", map[string]interface{}{"Error": "Invalid user response", "UserID": id})
+			return
+		}
+
+		renderTemplate(w, "user_delete_confirm.html", map[string]interface{}{
+			"User": user,
+		})
+	}
+}
+
+func userDelete(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		body, status, err := apiDelete(apiBase, "/users/"+id, tok)
+		if err != nil {
+			renderTemplate(w, "user_delete_confirm.html", map[string]interface{}{
+				"Error":  err.Error(),
+				"UserID": id,
+			})
+			return
+		}
+		if status == http.StatusNoContent {
+			http.Redirect(w, r, "/users", http.StatusFound)
+			return
+		}
+
+		msg := string(body)
+		if len(msg) > 200 {
+			msg = msg[:200] + "..."
+		}
+		renderTemplate(w, "user_delete_confirm.html", map[string]interface{}{
+			"Error":  "Delete failed: " + msg,
+			"UserID": id,
+		})
 	}
 }
 

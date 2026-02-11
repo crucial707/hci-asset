@@ -36,6 +36,11 @@ func main() {
 			"Error: %v", err)
 	}
 
+	// Ensure assets table has last_seen column (idempotent; safe if column already exists or table missing)
+	if _, err := db.Exec("ALTER TABLE assets ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ NULL"); err != nil {
+		log.Printf("Warning: could not ensure last_seen on assets (table may not exist yet): %v", err)
+	}
+
 	// ==========================
 	// Handlers
 	// ==========================

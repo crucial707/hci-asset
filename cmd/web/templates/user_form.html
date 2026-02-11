@@ -1,0 +1,11 @@
+{{define "title"}}New user{{end}}
+{{define "content"}}
+<h1>Add user</h1>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+<form method="post" action="{{.FormAction}}">
+  <label for="username">Username</label>
+  <input type="text" id="username" name="username" required>
+  <button type="submit">{{.SubmitLabel}}</button>
+</form>
+<p><a href="/users">← Users</a></p>
+{{end}}

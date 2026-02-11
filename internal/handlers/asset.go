@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -86,6 +87,7 @@ func (h *AssetHandler) ListAssets(w http.ResponseWriter, r *http.Request) {
 		assets, err = h.Repo.List(limit, offset)
 	}
 	if err != nil {
+		log.Printf("ListAssets error: %v", err)
 		JSONError(w, "failed to fetch assets", http.StatusInternalServerError)
 		return
 	}
