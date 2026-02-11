@@ -359,8 +359,10 @@ func assetDetail(apiBase string) http.HandlerFunc {
 			return
 		}
 
+		heartbeatError := r.URL.Query().Get("heartbeat_error") == "1"
 		renderTemplate(w, "asset_detail.html", map[string]interface{}{
-			"Asset": asset,
+			"Asset":         asset,
+			"HeartbeatError": heartbeatError,
 		})
 	}
 }
@@ -632,7 +634,36 @@ func assetDelete(apiBase string) http.HandlerFunc {
 
 func scanPage(apiBase string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		renderTemplate(w, "scan.html", map[string]interface{}{})
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		data, status, err := apiGet(apiBase, "/scans", tok)
+		if err != nil {
+			renderTemplate(w, "scan.html", map[string]interface{}{"Error": err.Error()})
+			return
+		}
+		if status != http.StatusOK {
+			renderTemplate(w, "scan.html", map[string]interface{}{"Error": "API error: " + string(data)})
+			return
+		}
+
+		var scans []struct {
+			ID        string `json:"id"`
+			Target    string `json:"target"`
+			Status    string `json:"status"`
+			StartedAt string `json:"started_at"`
+		}
+		if err := json.Unmarshal(data, &scans); err != nil {
+			renderTemplate(w, "scan.html", map[string]interface{}{})
+			return
+		}
+
+		renderTemplate(w, "scan.html", map[string]interface{}{
+			"Scans": scans,
+		})
 	}
 }
 

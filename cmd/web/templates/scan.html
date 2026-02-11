@@ -7,5 +7,21 @@
   <input type="text" id="target" name="target" placeholder="e.g. 192.168.1.0/24" required>
   <button type="submit">Start scan</button>
 </form>
-<p>Scans discover hosts and add them to assets. View a scan by job ID: <a href="/scans">/scans/<em>job_id</em></a> (open after starting a scan).</p>
+{{if .Scans}}
+<h2>Recent scans</h2>
+<table>
+  <thead><tr><th>Job</th><th>Target</th><th>Status</th><th>Started</th><th></th></tr></thead>
+  <tbody>
+  {{range .Scans}}<tr>
+    <td>{{.ID}}</td>
+    <td>{{.Target}}</td>
+    <td>{{.Status}}</td>
+    <td>{{.StartedAt}}</td>
+    <td><a href="/scans/{{.ID}}">View</a></td>
+  </tr>{{end}}
+  </tbody>
+</table>
+{{else}}
+<p>No scans yet. Start one above; recent scans will appear here.</p>
+{{end}}
 {{end}}

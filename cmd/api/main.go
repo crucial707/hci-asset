@@ -93,6 +93,7 @@ func main() {
 	r.With(jwtMiddleware).Post("/scan/{id}/cancel", scanHandler.CancelScan)
 
 	// ====== Scan endpoints (protected, clean /scans API) ======
+	r.With(jwtMiddleware).Get("/scans", scanHandler.ListScans)
 	r.With(jwtMiddleware).Post("/scans", scanHandler.StartScan)
 	r.With(jwtMiddleware).Get("/scans/{id}", scanHandler.GetScanStatus)
 	r.With(jwtMiddleware).Post("/scans/{id}/cancel", scanHandler.CancelScan)

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -70,6 +71,53 @@ func (h *ScanHandler) StartScan(w http.ResponseWriter, r *http.Request) {
 		"job_id": jobID,
 		"status": "running",
 	})
+}
+
+// ==========================
+// List Scans (recent job IDs with target, status, started_at)
+// ==========================
+func (h *ScanHandler) ListScans(w http.ResponseWriter, r *http.Request) {
+	h.scanJobsMu.Lock()
+	defer h.scanJobsMu.Unlock()
+
+	type jobSummary struct {
+		ID        string    `json:"id"`
+		Target    string    `json:"target"`
+		Status    string    `json:"status"`
+		StartedAt time.Time `json:"started_at"`
+	}
+
+	var ids []int
+	for id := range h.scanJobs {
+		n, err := strconv.Atoi(id)
+		if err != nil {
+			continue
+		}
+		ids = append(ids, n)
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(ids)))
+
+	const maxRecent = 20
+	var list []jobSummary
+	for i, n := range ids {
+		if i >= maxRecent {
+			break
+		}
+		idStr := strconv.Itoa(n)
+		job, ok := h.scanJobs[idStr]
+		if !ok {
+			continue
+		}
+		list = append(list, jobSummary{
+			ID:        idStr,
+			Target:    job.Target,
+			Status:    job.Status,
+			StartedAt: job.StartedAt,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(list)
 }
 
 // ==========================
