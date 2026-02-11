@@ -9,7 +9,7 @@
   {{range .Users}}<tr>
     <td>{{.ID}}</td>
     <td>{{.Username}}</td>
-    <td><a href="/users/{{.ID}}/delete">Delete</a></td>
+    <td><a href="/users/{{.ID}}/edit">Edit</a> · <a href="/users/{{.ID}}/delete">Delete</a></td>
   </tr>{{end}}
   </tbody>
 </table>

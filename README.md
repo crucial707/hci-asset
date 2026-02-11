@@ -86,7 +86,7 @@ The API does **not** run migrations automatically. When using **docker-compose**
 
 - **Assets table**: If you use the migrations in `internal/db/migrations/`, run the assets migration first (e.g. the `*_create_assets_table.up.sql` file) in the same way, or ensure the table exists. The API will fail at startup with a clear message if the `users` table is missing.
 
-- **Asset heartbeat (last_seen)**: To support asset heartbeat, add the `last_seen` column to `assets`:
+- **Asset heartbeat (last_seen)**: The API ensures the `last_seen` column exists on startup (it runs `ALTER TABLE assets ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ NULL`). If the `assets` table does not exist yet, you will see a warning in the API log; create the assets table first, then restart the API. You can also add the column manually if needed:
   ```powershell
   docker exec -i asset-postgres psql -U assetuser -d assetdb -c "ALTER TABLE assets ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ NULL;"
   ```
@@ -157,7 +157,7 @@ hci-asset scan status 1
 
 ## Web UI
 
-A small web dashboard runs as a separate binary and talks to the API.
+A web dashboard runs as a separate binary and talks to the API.
 
 - **Build and run** (API must be running on port 8080):
 
@@ -167,9 +167,14 @@ A small web dashboard runs as a separate binary and talks to the API.
 
   Then open http://localhost:3000
 
-- **Pages**: Login (username only; register via CLI first), Dashboard (asset count + recent assets), Assets list, Asset detail.
+- **Pages**:
+  - **Login** – Username only (create a user first via CLI: `hci-asset login --username you --register`).
+  - **Dashboard** – Asset count and recent assets with links to detail.
+  - **Assets** – List with search (by name or description), “+ New asset”, and per-row View. From asset detail: Edit, Delete, **Record heartbeat** (updates last seen). Create and edit use a simple name + description form.
+  - **Users** – List with “+ Add user”, and per-row Edit and Delete. Add and edit use a username-only form.
+  - **Scans** – Start a network scan (target e.g. `192.168.1.0/24`). Scan detail shows target, status, **elapsed/duration timer**, cancel button, and discovered assets with links to asset pages. Page auto-refreshes every few seconds while a scan is running.
 
-- **Config**: `HCI_WEB_PORT` (default 3000), `HCI_ASSET_API_URL` (default http://localhost:8080). Create a user first with `go run ./cmd/cli login --username you --register` (or `.\hci-asset.exe login --username you --register`); then log in to the UI with that username. The UI stores a JWT in a cookie.
+- **Config**: `HCI_WEB_PORT` (default 3000), `HCI_ASSET_API_URL` (default http://localhost:8080). The UI stores a JWT in a cookie after login.
 
 --------------------------------------------------------------------
 

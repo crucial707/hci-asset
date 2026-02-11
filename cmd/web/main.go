@@ -63,6 +63,8 @@ func main() {
 		r.Get("/users", usersList(apiBase))
 		r.Get("/users/new", userCreateForm(apiBase))
 		r.Post("/users", userCreate(apiBase))
+		r.Get("/users/{id}/edit", userEditForm(apiBase))
+		r.Post("/users/{id}/edit", userUpdate(apiBase))
 		r.Get("/users/{id}/delete", userDeleteConfirm(apiBase))
 		r.Post("/users/{id}/delete", userDelete(apiBase))
 		r.Get("/scans", scanPage(apiBase))
@@ -870,6 +872,90 @@ func userCreate(apiBase string) http.HandlerFunc {
 				"FormAction":  "/users",
 				"SubmitLabel": "Create user",
 			})
+			return
+		}
+
+		http.Redirect(w, r, "/users", http.StatusFound)
+	}
+}
+
+func userEditForm(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		data, status, err := apiGet(apiBase, "/users/"+id, tok)
+		if err != nil {
+			renderTemplate(w, "user_form.html", map[string]interface{}{"Error": err.Error()})
+			return
+		}
+		if status != http.StatusOK {
+			renderTemplate(w, "user_form.html", map[string]interface{}{"Error": "API error: " + string(data)})
+			return
+		}
+
+		var user struct {
+			ID       int    `json:"id"`
+			Username string `json:"username"`
+		}
+		if err := json.Unmarshal(data, &user); err != nil {
+			renderTemplate(w, "user_form.html", map[string]interface{}{"Error": "Invalid user response"})
+			return
+		}
+
+		renderTemplate(w, "user_form.html", map[string]interface{}{
+			"User":        user,
+			"FormAction":  "/users/" + id + "/edit",
+			"SubmitLabel": "Save changes",
+		})
+	}
+}
+
+func userUpdate(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
+		username := strings.TrimSpace(r.FormValue("username"))
+		editPayload := func(errMsg string) map[string]interface{} {
+			return map[string]interface{}{
+				"Error":       errMsg,
+				"User":       map[string]interface{}{"Username": username},
+				"FormAction":  "/users/" + id + "/edit",
+				"SubmitLabel": "Save changes",
+			}
+		}
+		if username == "" {
+			renderTemplate(w, "user_form.html", editPayload("Username is required"))
+			return
+		}
+
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		body := []byte(fmt.Sprintf(`{"username":%q}`, username))
+		data, status, err := apiPut(apiBase, "/users/"+id, tok, body)
+		if err != nil {
+			renderTemplate(w, "user_form.html", editPayload(err.Error()))
+			return
+		}
+		if status < http.StatusOK || status >= http.StatusMultipleChoices {
+			var errResp struct{ Error string }
+			_ = json.Unmarshal(data, &errResp)
+			msg := errResp.Error
+			if msg == "" {
+				msg = string(data)
+			}
+			renderTemplate(w, "user_form.html", editPayload("API: "+msg))
 			return
 		}
 
