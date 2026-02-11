@@ -1,0 +1,11 @@
+{{define "title"}}Scans{{end}}
+{{define "content"}}
+<h1>Network scan</h1>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+<form method="post" action="/scans">
+  <label for="target">Target (IP, range, or CIDR)</label>
+  <input type="text" id="target" name="target" placeholder="e.g. 192.168.1.0/24" required>
+  <button type="submit">Start scan</button>
+</form>
+<p>Scans discover hosts and add them to assets. View a scan by job ID: <a href="/scans">/scans/<em>job_id</em></a> (open after starting a scan).</p>
+{{end}}

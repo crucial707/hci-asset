@@ -1,6 +1,7 @@
 {{define "content"}}
 {{if .Error}}<p class="error">{{.Error}}</p>{{else}}
 <p><a href="/assets">← Assets</a></p>
+<p><a href="/assets/{{.Asset.ID}}/edit">Edit asset</a> · <a href="/assets/{{.Asset.ID}}/delete">Delete asset</a></p>
 <h1>Asset: {{.Asset.Name}}</h1>
 <table>
   <tr><th>ID</th><td>{{.Asset.ID}}</td></tr>

@@ -1,0 +1,16 @@
+{{define "title"}}{{if .Asset}}Edit asset{{else}}New asset{{end}}{{end}}
+{{define "content"}}
+<h1>{{if .Asset}}Edit asset{{else}}New asset{{end}}</h1>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+<form method="post" action="{{.FormAction}}">
+  <label for="name">Name</label>
+  <input type="text" id="name" name="name" required {{if .Asset}}value="{{.Asset.Name}}"{{end}}>
+
+  <label for="description">Description</label>
+  <textarea id="description" name="description" rows="3" required>{{if .Asset}}{{.Asset.Description}}{{end}}</textarea>
+
+  <button type="submit">{{.SubmitLabel}}</button>
+</form>
+<p><a href="/assets">← Assets</a></p>
+{{end}}
+

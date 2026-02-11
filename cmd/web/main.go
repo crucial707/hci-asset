@@ -50,8 +50,18 @@ func main() {
 		r.Use(requireAuth(apiBase))
 		r.Get("/", redirectDashboard)
 		r.Get("/dashboard", dashboard(apiBase))
+		r.Get("/assets/new", assetCreateForm(apiBase))
+		r.Post("/assets", assetCreate(apiBase))
 		r.Get("/assets", assetsList(apiBase))
 		r.Get("/assets/{id}", assetDetail(apiBase))
+		r.Get("/assets/{id}/edit", assetEditForm(apiBase))
+		r.Post("/assets/{id}/edit", assetUpdate(apiBase))
+		r.Get("/assets/{id}/delete", assetDeleteConfirm(apiBase))
+		r.Post("/assets/{id}/delete", assetDelete(apiBase))
+		r.Get("/scans", scanPage(apiBase))
+		r.Post("/scans", startScan(apiBase))
+		r.Get("/scans/{id}", scanDetail(apiBase))
+		r.Post("/scans/{id}/cancel", cancelScan(apiBase))
 	})
 
 	log.Printf("Web UI running on http://localhost:%s (API: %s)", port, apiBase)
@@ -174,6 +184,53 @@ func apiGet(apiBase, path, token string) ([]byte, int, error) {
 	return data, resp.StatusCode, nil
 }
 
+// apiPost performs POST to API with token and JSON body.
+func apiPost(apiBase, path, token string, body []byte) ([]byte, int, error) {
+	req, _ := http.NewRequest("POST", apiBase+path, strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	return data, resp.StatusCode, nil
+}
+
+// apiPut performs PUT to API with token and JSON body.
+func apiPut(apiBase, path, token string, body []byte) ([]byte, int, error) {
+	req, _ := http.NewRequest("PUT", apiBase+path, strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	return data, resp.StatusCode, nil
+}
+
+// apiDelete performs DELETE to API with token.
+func apiDelete(apiBase, path, token string) ([]byte, int, error) {
+	req, _ := http.NewRequest("DELETE", apiBase+path, nil)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	return data, resp.StatusCode, nil
+}
+
 func dashboard(apiBase string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token, _ := r.Cookie(cookieName)
@@ -280,6 +337,370 @@ func assetDetail(apiBase string) http.HandlerFunc {
 		renderTemplate(w, "asset_detail.html", map[string]interface{}{
 			"Asset": asset,
 		})
+	}
+}
+
+// ====== Asset create/edit (Web UI) ======
+
+func assetCreateForm(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		renderTemplate(w, "asset_form.html", map[string]interface{}{
+			"FormAction":  "/assets",
+			"SubmitLabel": "Create asset",
+		})
+	}
+}
+
+func assetCreate(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
+		name := strings.TrimSpace(r.FormValue("name"))
+		description := strings.TrimSpace(r.FormValue("description"))
+
+		if name == "" || description == "" {
+			renderTemplate(w, "asset_form.html", map[string]interface{}{
+				"Error":       "Name and description are required",
+				"FormAction":  "/assets",
+				"SubmitLabel": "Create asset",
+			})
+			return
+		}
+
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		body := []byte(fmt.Sprintf(`{"name":%q,"description":%q}`, name, description))
+		data, status, err := apiPost(apiBase, "/assets", tok, body)
+		if err != nil {
+			renderTemplate(w, "asset_form.html", map[string]interface{}{
+				"Error":       err.Error(),
+				"FormAction":  "/assets",
+				"SubmitLabel": "Create asset",
+			})
+			return
+		}
+		if status < http.StatusOK || status >= http.StatusMultipleChoices {
+			renderTemplate(w, "asset_form.html", map[string]interface{}{
+				"Error":       "API error: " + string(data),
+				"FormAction":  "/assets",
+				"SubmitLabel": "Create asset",
+			})
+			return
+		}
+
+		var asset struct {
+			ID int `json:"id"`
+		}
+		if err := json.Unmarshal(data, &asset); err != nil || asset.ID == 0 {
+			renderTemplate(w, "asset_form.html", map[string]interface{}{
+				"Error":       "Invalid create asset response",
+				"FormAction":  "/assets",
+				"SubmitLabel": "Create asset",
+			})
+			return
+		}
+
+		http.Redirect(w, r, "/assets/"+fmt.Sprint(asset.ID), http.StatusFound)
+	}
+}
+
+func assetEditForm(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		data, status, err := apiGet(apiBase, "/assets/"+id, tok)
+		if err != nil {
+			renderTemplate(w, "asset_form.html", map[string]interface{}{
+				"Error": err.Error(),
+			})
+			return
+		}
+		if status != http.StatusOK {
+			renderTemplate(w, "asset_form.html", map[string]interface{}{
+				"Error": "API error: " + string(data),
+			})
+			return
+		}
+
+		var asset struct {
+			ID          int     `json:"id"`
+			Name        string  `json:"name"`
+			Description string  `json:"description"`
+			NetworkName string  `json:"network_name"`
+			LastSeen    *string `json:"last_seen"`
+		}
+		if err := json.Unmarshal(data, &asset); err != nil {
+			renderTemplate(w, "asset_form.html", map[string]interface{}{
+				"Error": "Invalid asset response",
+			})
+			return
+		}
+
+		renderTemplate(w, "asset_form.html", map[string]interface{}{
+			"Asset":       asset,
+			"FormAction":  "/assets/" + id + "/edit",
+			"SubmitLabel": "Save changes",
+		})
+	}
+}
+
+func assetUpdate(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
+		name := strings.TrimSpace(r.FormValue("name"))
+		description := strings.TrimSpace(r.FormValue("description"))
+
+		if name == "" || description == "" {
+			renderTemplate(w, "asset_form.html", map[string]interface{}{
+				"Error":       "Name and description are required",
+				"FormAction":  "/assets/" + id + "/edit",
+				"SubmitLabel": "Save changes",
+			})
+			return
+		}
+
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		body := []byte(fmt.Sprintf(`{"name":%q,"description":%q}`, name, description))
+		data, status, err := apiPut(apiBase, "/assets/"+id, tok, body)
+		if err != nil {
+			renderTemplate(w, "asset_form.html", map[string]interface{}{
+				"Error":       err.Error(),
+				"FormAction":  "/assets/" + id + "/edit",
+				"SubmitLabel": "Save changes",
+			})
+			return
+		}
+		if status < http.StatusOK || status >= http.StatusMultipleChoices {
+			renderTemplate(w, "asset_form.html", map[string]interface{}{
+				"Error":       "API error: " + string(data),
+				"FormAction":  "/assets/" + id + "/edit",
+				"SubmitLabel": "Save changes",
+			})
+			return
+		}
+
+		var asset struct {
+			ID int `json:"id"`
+		}
+		if err := json.Unmarshal(data, &asset); err != nil || asset.ID == 0 {
+			renderTemplate(w, "asset_form.html", map[string]interface{}{
+				"Error":       "Invalid update asset response",
+				"FormAction":  "/assets/" + id + "/edit",
+				"SubmitLabel": "Save changes",
+			})
+			return
+		}
+
+		http.Redirect(w, r, "/assets/"+fmt.Sprint(asset.ID), http.StatusFound)
+	}
+}
+
+func assetDeleteConfirm(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		data, status, err := apiGet(apiBase, "/assets/"+id, tok)
+		if err != nil {
+			renderTemplate(w, "asset_delete_confirm.html", map[string]interface{}{"Error": err.Error(), "AssetID": id})
+			return
+		}
+		if status != http.StatusOK {
+			renderTemplate(w, "asset_delete_confirm.html", map[string]interface{}{"Error": "Asset not found or API error", "AssetID": id})
+			return
+		}
+
+		var asset struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal(data, &asset); err != nil {
+			renderTemplate(w, "asset_delete_confirm.html", map[string]interface{}{"Error": "Invalid asset response", "AssetID": id})
+			return
+		}
+
+		renderTemplate(w, "asset_delete_confirm.html", map[string]interface{}{
+			"Asset": asset,
+		})
+	}
+}
+
+func assetDelete(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		body, status, err := apiDelete(apiBase, "/assets/"+id, tok)
+		if err != nil {
+			renderTemplate(w, "asset_delete_confirm.html", map[string]interface{}{
+				"Error":   err.Error(),
+				"AssetID": id,
+			})
+			return
+		}
+		if status == http.StatusNoContent {
+			http.Redirect(w, r, "/assets", http.StatusFound)
+			return
+		}
+
+		msg := string(body)
+		if len(msg) > 200 {
+			msg = msg[:200] + "..."
+		}
+		renderTemplate(w, "asset_delete_confirm.html", map[string]interface{}{
+			"Error":   "Delete failed: " + msg,
+			"AssetID": id,
+		})
+	}
+}
+
+func scanPage(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		renderTemplate(w, "scan.html", map[string]interface{}{})
+	}
+}
+
+func startScan(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
+		target := strings.TrimSpace(r.FormValue("target"))
+		if target == "" {
+			renderTemplate(w, "scan.html", map[string]interface{}{"Error": "Target is required (e.g. 192.168.1.0/24 or hostname)"})
+			return
+		}
+
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		body := []byte(fmt.Sprintf(`{"target":%q}`, target))
+		data, status, err := apiPost(apiBase, "/scans", tok, body)
+		if err != nil {
+			renderTemplate(w, "scan.html", map[string]interface{}{"Error": err.Error()})
+			return
+		}
+		if status != http.StatusOK {
+			var errResp struct{ Error string }
+			_ = json.Unmarshal(data, &errResp)
+			msg := errResp.Error
+			if msg == "" {
+				msg = string(data)
+			}
+			renderTemplate(w, "scan.html", map[string]interface{}{"Error": "API: " + msg})
+			return
+		}
+
+		var out struct {
+			JobID  string `json:"job_id"`
+			Status string `json:"status"`
+		}
+		if err := json.Unmarshal(data, &out); err != nil || out.JobID == "" {
+			renderTemplate(w, "scan.html", map[string]interface{}{"Error": "Invalid scan response"})
+			return
+		}
+
+		http.Redirect(w, r, "/scans/"+out.JobID, http.StatusFound)
+	}
+}
+
+func scanDetail(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		jobID := chi.URLParam(r, "id")
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		data, status, err := apiGet(apiBase, "/scans/"+jobID, tok)
+		if err != nil {
+			renderTemplate(w, "scan_detail.html", map[string]interface{}{"Error": err.Error(), "JobID": jobID})
+			return
+		}
+		if status == http.StatusNotFound {
+			renderTemplate(w, "scan_detail.html", map[string]interface{}{"Error": "Scan job not found", "JobID": jobID})
+			return
+		}
+		if status != http.StatusOK {
+			renderTemplate(w, "scan_detail.html", map[string]interface{}{"Error": "API error: " + string(data), "JobID": jobID})
+			return
+		}
+
+		var job struct {
+			Target string `json:"target"`
+			Status string `json:"status"`
+			Error  string `json:"error"`
+			Assets []struct {
+				ID          int    `json:"id"`
+				Name        string `json:"name"`
+				Description string `json:"description"`
+				NetworkName string `json:"network_name"`
+			} `json:"assets"`
+		}
+		if err := json.Unmarshal(data, &job); err != nil {
+			renderTemplate(w, "scan_detail.html", map[string]interface{}{"Error": "Invalid scan response", "JobID": jobID})
+			return
+		}
+
+		renderTemplate(w, "scan_detail.html", map[string]interface{}{
+			"JobID": jobID,
+			"Job":   job,
+		})
+	}
+}
+
+func cancelScan(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		jobID := chi.URLParam(r, "id")
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		_, status, err := apiPost(apiBase, "/scans/"+jobID+"/cancel", tok, []byte("{}"))
+		if err != nil {
+			http.Redirect(w, r, "/scans/"+jobID+"?error="+url.QueryEscape(err.Error()), http.StatusFound)
+			return
+		}
+		if status != http.StatusOK {
+			http.Redirect(w, r, "/scans/"+jobID, http.StatusFound)
+			return
+		}
+		http.Redirect(w, r, "/scans/"+jobID, http.StatusFound)
 	}
 }
 

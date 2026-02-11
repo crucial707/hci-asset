@@ -1,0 +1,14 @@
+{{define "title"}}Delete asset{{end}}
+{{define "content"}}
+<h1>Delete asset</h1>
+{{if .Error}}
+<p class="error">{{.Error}}</p>
+<p><a href="/assets">← Assets</a>{{if .AssetID}} · <a href="/assets/{{.AssetID}}">Back to asset</a>{{end}}</p>
+{{else}}
+<p>Are you sure you want to delete <strong>{{.Asset.Name}}</strong> (ID {{.Asset.ID}})? This cannot be undone.</p>
+<form method="post" action="/assets/{{.Asset.ID}}/delete">
+  <button type="submit">Delete</button>
+  <a href="/assets/{{.Asset.ID}}">Cancel</a>
+</form>
+{{end}}
+{{end}}

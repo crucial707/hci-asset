@@ -1,0 +1,32 @@
+{{define "title"}}Scan {{.JobID}}{{end}}
+{{define "content"}}
+<h1>Scan {{.JobID}}</h1>
+{{if .Error}}<p class="error">{{.Error}}</p><p><a href="/scans">Back to Scans</a></p>{{else}}
+<p><strong>Target:</strong> {{.Job.Target}} &nbsp; <strong>Status:</strong> {{.Job.Status}}</p>
+{{if .Job.Error}}<p class="error">{{.Job.Error}}</p>{{end}}
+{{if eq .Job.Status "running"}}
+<form method="post" action="/scans/{{.JobID}}/cancel" style="margin-bottom: 1rem;">
+  <button type="submit">Cancel scan</button>
+</form>
+{{end}}
+{{if .Job.Assets}}
+<h2>Discovered assets ({{len .Job.Assets}})</h2>
+<table>
+  <thead><tr><th>ID</th><th>Name</th><th>IP / Network</th><th>Description</th><th></th></tr></thead>
+  <tbody>
+  {{range .Job.Assets}}<tr>
+    <td>{{.ID}}</td>
+    <td>{{.Name}}</td>
+    <td>{{.NetworkName}}</td>
+    <td>{{.Description}}</td>
+    <td><a href="/assets/{{.ID}}">View</a></td>
+  </tr>{{end}}
+  </tbody>
+</table>
+{{else}}
+{{if eq .Job.Status "complete"}}<p>No hosts discovered.</p>{{end}}
+{{if eq .Job.Status "running"}}<p>Scan in progress… Refresh to see discovered assets.</p>{{end}}
+{{end}}
+<p><a href="/scans">Back to Scans</a></p>
+{{end}}
+{{end}}
