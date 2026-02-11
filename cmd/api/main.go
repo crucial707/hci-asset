@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -18,15 +19,17 @@ func main() {
 	// Load configuration
 	cfg := config.Load()
 
-	// Connect to Postgres (must match docker-compose: assetdb, assetuser, assetpass)
-	db, err := sql.Open("postgres", "postgres://assetuser:assetpass@localhost:5432/assetdb?sslmode=disable")
+	// Connect to Postgres (config from env: DB_HOST, DB_PORT, etc.; defaults match local docker-compose)
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		cfg.DBUser, cfg.DBPass, cfg.DBHost, cfg.DBPort, cfg.DBName)
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		log.Fatal("DB open:", err)
 	}
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Fatal("DB ping failed (is Postgres running on localhost:5432?): ", err)
+		log.Fatalf("DB ping failed (host=%s port=%s): %v", cfg.DBHost, cfg.DBPort, err)
 	}
 
 	// Ensure users table exists (migrations are not run automatically)

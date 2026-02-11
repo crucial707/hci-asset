@@ -42,6 +42,14 @@ From the root of the repository:
 
 This command compiles the Go application and creates a lightweight runtime image tagged as hci-asset-api.
 
+=Run with Docker Compose (recommended)=
+
+From the repo root, run the full stack (Postgres, API, Web UI):
+
+  docker compose up -d
+
+Then open the Web UI at http://localhost:3000 and the API at http://localhost:8080. Ensure the **users** and **assets** tables exist (see Database setup below); the API will add the `last_seen` column to `assets` on startup if the table exists.
+
 =Run the Container=
 "docker run -p 8080:8080 \
 -e DB_HOST=host.docker.internal \

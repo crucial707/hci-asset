@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -286,6 +287,7 @@ func dashboard(apiBase string) http.HandlerFunc {
 }
 
 func assetsList(apiBase string) http.HandlerFunc {
+	const pageSize = 20
 	return func(w http.ResponseWriter, r *http.Request) {
 		token, _ := r.Cookie(cookieName)
 		tok := ""
@@ -294,18 +296,26 @@ func assetsList(apiBase string) http.HandlerFunc {
 		}
 
 		search := strings.TrimSpace(r.URL.Query().Get("search"))
-		path := "/assets?limit=500"
+		page := 1
+		if p := r.URL.Query().Get("page"); p != "" {
+			if n, err := strconv.Atoi(p); err == nil && n > 0 {
+				page = n
+			}
+		}
+		offset := (page - 1) * pageSize
+
+		path := fmt.Sprintf("/assets?limit=%d&offset=%d", pageSize, offset)
 		if search != "" {
 			path += "&search=" + url.QueryEscape(search)
 		}
 
 		data, status, err := apiGet(apiBase, path, tok)
 		if err != nil {
-			renderTemplate(w, "assets.html", map[string]interface{}{"Error": err.Error(), "SearchQuery": search})
+			renderTemplate(w, "assets.html", map[string]interface{}{"Error": err.Error(), "SearchQuery": search, "Page": page})
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "assets.html", map[string]interface{}{"Error": "API error: " + string(data), "SearchQuery": search})
+			renderTemplate(w, "assets.html", map[string]interface{}{"Error": "API error: " + string(data), "SearchQuery": search, "Page": page})
 			return
 		}
 
@@ -317,13 +327,28 @@ func assetsList(apiBase string) http.HandlerFunc {
 			LastSeen    *string `json:"last_seen"`
 		}
 		if err := json.Unmarshal(data, &assets); err != nil {
-			renderTemplate(w, "assets.html", map[string]interface{}{"Error": "Invalid assets response", "SearchQuery": search})
+			renderTemplate(w, "assets.html", map[string]interface{}{"Error": "Invalid assets response", "SearchQuery": search, "Page": page})
 			return
 		}
 
+		hasNext := len(assets) == pageSize
+		prevPage := 0
+		if page > 1 {
+			prevPage = page - 1
+		}
+		nextPage := 0
+		if hasNext {
+			nextPage = page + 1
+		}
+		searchEncoded := url.QueryEscape(search)
+
 		renderTemplate(w, "assets.html", map[string]interface{}{
-			"Assets":     assets,
-			"SearchQuery": search,
+			"Assets":          assets,
+			"SearchQuery":     search,
+			"SearchEncoded":   searchEncoded,
+			"Page":            page,
+			"PrevPage":        prevPage,
+			"NextPage":        nextPage,
 		})
 	}
 }

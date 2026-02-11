@@ -7,6 +7,13 @@
   <button type="submit">Search</button>
   {{if .SearchQuery}}<a href="/assets">Clear</a>{{end}}
 </form>
+{{if or .PrevPage .NextPage}}
+<p class="pagination">
+  {{if .PrevPage}}<a href="/assets?page={{.PrevPage}}{{if .SearchQuery}}&search={{.SearchEncoded}}{{end}}">← Previous</a>{{end}}
+  {{if and .PrevPage .NextPage}} &nbsp; {{end}}
+  {{if .NextPage}}<a href="/assets?page={{.NextPage}}{{if .SearchQuery}}&search={{.SearchEncoded}}{{end}}">Next →</a>{{end}}
+</p>
+{{end}}
 <table>
   <thead><tr><th>ID</th><th>Name</th><th>IP / Network</th><th>Description</th><th>Last seen</th><th></th></tr></thead>
   <tbody>

@@ -28,5 +28,18 @@ services:
     ports:
       - "8080:8080"
 
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: hci-asset-web
+    depends_on:
+      - api
+    environment:
+      HCI_WEB_PORT: "3000"
+      HCI_ASSET_API_URL: "http://api:8080"
+    ports:
+      - "3000:3000"
+
 volumes:
   pgdata:
