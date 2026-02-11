@@ -16,6 +16,8 @@ RUN go build -o hci-asset ./cmd/api
 # 2. Run stage (smaller final image)
 FROM alpine:latest
 
+RUN apk add --no-cache nmap
+
 WORKDIR /app
 
 # Copy the binary from the builder stage

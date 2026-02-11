@@ -15,6 +15,9 @@ type Config struct {
 	DBPass string
 
 	JWTSecret string
+
+	// NmapPath is the path to the nmap executable (e.g. "nmap" for Linux/Mac, or full Windows path).
+	NmapPath string
 }
 
 func Load() Config {
@@ -29,8 +32,10 @@ func Load() Config {
 		DBPass: getEnv("DB_PASS", "assetpass"),
 
 		JWTSecret: getEnv("JWT_SECRET", "supersecretkey"),
-	}
 
+		// Default "nmap" works on Linux/Mac when nmap is in PATH; set NMAP_PATH for Windows or custom install.
+		NmapPath: getEnv("NMAP_PATH", "nmap"),
+	}
 }
 
 func getEnv(key, fallback string) string {

@@ -34,6 +34,7 @@ type ScanJob struct {
 // ==========================
 type ScanHandler struct {
 	Repo       *repo.AssetRepo
+	NmapPath   string // path to nmap executable (e.g. "nmap" or "C:\\Program Files (x86)\\Nmap\\nmap.exe")
 	scanJobs   map[string]*ScanJob
 	scanJobsMu sync.Mutex
 }
@@ -171,7 +172,11 @@ func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 	job := h.scanJobs[jobID]
 	h.scanJobsMu.Unlock()
 
-	cmd := exec.Command("C:\\Program Files (x86)\\Nmap\\nmap.exe", "-sn", target)
+	nmapExe := h.NmapPath
+	if nmapExe == "" {
+		nmapExe = "nmap"
+	}
+	cmd := exec.Command(nmapExe, "-sn", target)
 	outputBytes, err := cmd.CombinedOutput()
 	now := time.Now()
 	job.CompletedAt = &now

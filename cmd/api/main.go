@@ -51,7 +51,7 @@ func main() {
 	userRepo := repo.NewUserRepo(db)
 
 	assetHandler := &handlers.AssetHandler{Repo: assetRepo}
-	scanHandler := &handlers.ScanHandler{Repo: assetRepo}
+	scanHandler := &handlers.ScanHandler{Repo: assetRepo, NmapPath: cfg.NmapPath}
 	userHandler := &handlers.UserHandler{Repo: userRepo}
 	authHandler := &handlers.AuthHandler{
 		UserRepo: userRepo,

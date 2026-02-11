@@ -70,6 +70,7 @@ hci-asset-api"
 | DB_USER    | Database username              |
 | DB_PASS    | Database password              |
 | JWT_SECRET | Secret used to sign JWT tokens |
+| NMAP_PATH  | Path to nmap executable (default: `nmap`). For Docker the image includes nmap. On Windows, set to e.g. `C:\Program Files (x86)\Nmap\nmap.exe` if scans fail. |
 
 If PostgreSQL is running on your host machine, use:
 "DB_HOST=host.docker.internal"
