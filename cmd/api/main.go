@@ -80,6 +80,16 @@ func newRouter(db *sql.DB, cfg config.Config) *chi.Mux {
 		w.Write([]byte("ok"))
 	})
 
+	// Readiness: ping DB so orchestrators can fail unhealthy instances
+	r.Get("/ready", func(w http.ResponseWriter, r *http.Request) {
+		if err := db.Ping(); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte("db unreachable"))
+			return
+		}
+		w.Write([]byte("ok"))
+	})
+
 	authLimiter := middleware.AuthRateLimiter()
 	r.With(authLimiter.Middleware).Post("/auth/register", authHandler.Register)
 	r.With(authLimiter.Middleware).Post("/auth/login", authHandler.Login)

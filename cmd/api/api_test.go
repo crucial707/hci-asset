@@ -106,3 +106,26 @@ func TestAPI_Health(t *testing.T) {
 		t.Errorf("GET /health status: got %d, want 200", resp.StatusCode)
 	}
 }
+
+// TestAPI_Ready checks that /ready pings the DB and returns 200 when DB is reachable.
+func TestAPI_Ready(t *testing.T) {
+	db, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+
+	cfg := config.Config{JWTSecret: "x", NmapPath: "nmap"}
+	r := newRouter(db, cfg)
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/ready")
+	if err != nil {
+		t.Fatalf("ready request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET /ready status: got %d, want 200", resp.StatusCode)
+	}
+}
