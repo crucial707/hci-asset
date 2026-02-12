@@ -30,3 +30,29 @@
 
 - [x] **API section in README** – New "## API" section: health/ready, auth (register, login, Bearer token), tables for assets, users, scans endpoints and error format.
 - [x] **Local dev** – README "Local dev (quick start)" under Development: docker compose up, create DB tables (with link to Database setup), run tests, optional local API/Web against Postgres.
+
+--------------------------------------------------------------------
+
+## Suggested next steps
+
+Priorities below are optional; pick by impact and effort.
+
+### Web UI for new features
+
+- [x] **Schedules page** – Web UI to list, create, edit, and delete scan schedules (GET/POST/PUT/DELETE `/schedules`). Nav link, schedules list, form (target, cron_expr, enabled), delete confirm.
+- [x] **Audit log page** – Web UI to view the audit log (GET `/audit` with limit/offset). Nav link, table: user_id, action, resource type/id, details, when; Previous/Next pagination.
+
+### Reliability and operations
+
+- [ ] **Persist scan jobs** – Store scan jobs in the DB (or a dedicated table) so history survives API restarts. Today scans are in-memory only.
+- [ ] **Formal migrations** – Use a migration runner (e.g. golang-migrate) so all schema changes live in `internal/db/migrations/` and are applied on startup or via a CLI step, instead of ad-hoc `CREATE TABLE IF NOT EXISTS` in main.
+
+### Testing and quality
+
+- [ ] **Schedule handler tests** – Unit tests for `ScheduleHandler` (List, Get, Create, Update, Delete) with httptest and repo mocks.
+- [ ] **Schedule repo tests** – `internal/repo/schedule_test.go` with sqlmock for List, ListEnabled, GetByID, Create, Update, Delete.
+
+### Product and security
+
+- [ ] **Password auth (optional)** – Add optional password-based login alongside or instead of username-only, with secure hashing (e.g. bcrypt).
+- [ ] **RBAC or roles** – Restrict who can manage users, delete assets, or manage schedules (e.g. admin vs viewer).

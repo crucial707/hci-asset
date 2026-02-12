@@ -1,0 +1,23 @@
+{{define "title"}}Scan schedules{{end}}
+{{define "content"}}
+<h1>Scan schedules</h1>
+{{if .Error}}<p class="error">{{.Error}}</p>{{else}}
+<p><a href="/schedules/new">+ Add schedule</a></p>
+<p>Recurring scans run at the given cron time (5 fields: minute hour day month weekday). Example: <code>0 * * * *</code> = hourly.</p>
+<table>
+  <thead><tr><th>ID</th><th>Target</th><th>Cron</th><th>Enabled</th><th>Created</th><th></th></tr></thead>
+  <tbody>
+  {{range .Schedules}}<tr>
+    <td>{{.ID}}</td>
+    <td>{{.Target}}</td>
+    <td><code>{{.CronExpr}}</code></td>
+    <td>{{if .Enabled}}Yes{{else}}No{{end}}</td>
+    <td>{{.CreatedAt}}</td>
+    <td><a href="/schedules/{{.ID}}/edit">Edit</a> · <a href="/schedules/{{.ID}}/delete">Delete</a></td>
+  </tr>{{end}}
+  </tbody>
+</table>
+{{if not .Schedules}}<p>No schedules. Add one to run scans automatically (e.g. hourly).</p>{{end}}
+{{end}}
+<p><a href="/scans">← Scans</a></p>
+{{end}}

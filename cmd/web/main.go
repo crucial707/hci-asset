@@ -72,6 +72,14 @@ func main() {
 		r.Post("/scans", startScan(apiBase))
 		r.Get("/scans/{id}", scanDetail(apiBase))
 		r.Post("/scans/{id}/cancel", cancelScan(apiBase))
+		r.Get("/schedules", schedulesList(apiBase))
+		r.Get("/schedules/new", scheduleCreateForm(apiBase))
+		r.Post("/schedules", scheduleCreate(apiBase))
+		r.Get("/schedules/{id}/edit", scheduleEditForm(apiBase))
+		r.Post("/schedules/{id}/edit", scheduleUpdate(apiBase))
+		r.Get("/schedules/{id}/delete", scheduleDeleteConfirm(apiBase))
+		r.Post("/schedules/{id}/delete", scheduleDelete(apiBase))
+		r.Get("/audit", auditList(apiBase))
 	})
 
 	log.Printf("Web UI running on http://localhost:%s (API: %s)", port, apiBase)
@@ -922,6 +930,338 @@ func cancelScan(apiBase string) http.HandlerFunc {
 			return
 		}
 		http.Redirect(w, r, "/scans/"+jobID, http.StatusFound)
+	}
+}
+
+// ====== Schedules (Web UI) ======
+
+func schedulesList(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		data, status, err := apiGet(apiBase, "/schedules?limit=100", tok)
+		if err != nil {
+			renderTemplate(w, "schedules.html", map[string]interface{}{"Error": err.Error()})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
+		if status != http.StatusOK {
+			renderTemplate(w, "schedules.html", map[string]interface{}{"Error": "API error: " + string(data)})
+			return
+		}
+
+		var schedules []struct {
+			ID        int       `json:"id"`
+			Target    string    `json:"target"`
+			CronExpr  string    `json:"cron_expr"`
+			Enabled   bool      `json:"enabled"`
+			CreatedAt time.Time `json:"created_at"`
+		}
+		if err := json.Unmarshal(data, &schedules); err != nil {
+			renderTemplate(w, "schedules.html", map[string]interface{}{"Error": "Invalid schedules response"})
+			return
+		}
+
+		renderTemplate(w, "schedules.html", map[string]interface{}{"Schedules": schedules})
+	}
+}
+
+func scheduleCreateForm(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		renderTemplate(w, "schedule_form.html", map[string]interface{}{
+			"FormAction":  "/schedules",
+			"SubmitLabel": "Create schedule",
+		})
+	}
+}
+
+func scheduleCreate(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
+		target := strings.TrimSpace(r.FormValue("target"))
+		cronExpr := strings.TrimSpace(r.FormValue("cron_expr"))
+		enabled := r.FormValue("enabled") == "1"
+
+		if target == "" || cronExpr == "" {
+			renderTemplate(w, "schedule_form.html", map[string]interface{}{
+				"Error":       "Target and cron expression are required",
+				"FormAction":  "/schedules",
+				"SubmitLabel": "Create schedule",
+			})
+			return
+		}
+
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		payload := map[string]interface{}{"target": target, "cron_expr": cronExpr, "enabled": enabled}
+		body, _ := json.Marshal(payload)
+		data, status, err := apiPost(apiBase, "/schedules", tok, body)
+		if err != nil {
+			renderTemplate(w, "schedule_form.html", map[string]interface{}{
+				"Error":       err.Error(),
+				"FormAction":  "/schedules",
+				"SubmitLabel": "Create schedule",
+			})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
+		if status != http.StatusCreated && status != http.StatusOK {
+			renderTemplate(w, "schedule_form.html", map[string]interface{}{
+				"Error":       "API error: " + string(data),
+				"FormAction":  "/schedules",
+				"SubmitLabel": "Create schedule",
+			})
+			return
+		}
+
+		http.Redirect(w, r, "/schedules", http.StatusFound)
+	}
+}
+
+func scheduleEditForm(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		data, status, err := apiGet(apiBase, "/schedules/"+id, tok)
+		if err != nil {
+			renderTemplate(w, "schedule_form.html", map[string]interface{}{"Error": err.Error()})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
+		if status != http.StatusOK {
+			renderTemplate(w, "schedule_form.html", map[string]interface{}{"Error": "API error: " + string(data)})
+			return
+		}
+
+		var schedule struct {
+			ID        int       `json:"id"`
+			Target    string    `json:"target"`
+			CronExpr  string    `json:"cron_expr"`
+			Enabled   bool      `json:"enabled"`
+			CreatedAt time.Time `json:"created_at"`
+		}
+		if err := json.Unmarshal(data, &schedule); err != nil {
+			renderTemplate(w, "schedule_form.html", map[string]interface{}{"Error": "Invalid schedule response"})
+			return
+		}
+
+		renderTemplate(w, "schedule_form.html", map[string]interface{}{
+			"Schedule":    schedule,
+			"FormAction":  "/schedules/" + id + "/edit",
+			"SubmitLabel": "Save changes",
+		})
+	}
+}
+
+func scheduleUpdate(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
+		target := strings.TrimSpace(r.FormValue("target"))
+		cronExpr := strings.TrimSpace(r.FormValue("cron_expr"))
+		enabled := r.FormValue("enabled") == "1"
+
+		if target == "" || cronExpr == "" {
+			renderTemplate(w, "schedule_form.html", map[string]interface{}{
+				"Error":       "Target and cron expression are required",
+				"FormAction":  "/schedules/" + id + "/edit",
+				"SubmitLabel": "Save changes",
+			})
+			return
+		}
+
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		payload := map[string]interface{}{"target": target, "cron_expr": cronExpr, "enabled": enabled}
+		body, _ := json.Marshal(payload)
+		_, status, err := apiPut(apiBase, "/schedules/"+id, tok, body)
+		if err != nil {
+			renderTemplate(w, "schedule_form.html", map[string]interface{}{
+				"Error":       err.Error(),
+				"FormAction":  "/schedules/" + id + "/edit",
+				"SubmitLabel": "Save changes",
+			})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
+		if status != http.StatusOK {
+			http.Redirect(w, r, "/schedules/"+id+"/edit", http.StatusFound)
+			return
+		}
+		http.Redirect(w, r, "/schedules", http.StatusFound)
+	}
+}
+
+func scheduleDeleteConfirm(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		data, status, err := apiGet(apiBase, "/schedules/"+id, tok)
+		if err != nil {
+			renderTemplate(w, "schedule_delete_confirm.html", map[string]interface{}{"Error": err.Error(), "ScheduleID": id})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
+		if status != http.StatusOK {
+			renderTemplate(w, "schedule_delete_confirm.html", map[string]interface{}{"Error": "Schedule not found or API error", "ScheduleID": id})
+			return
+		}
+
+		var schedule struct {
+			ID       int    `json:"id"`
+			Target   string `json:"target"`
+			CronExpr string `json:"cron_expr"`
+		}
+		if err := json.Unmarshal(data, &schedule); err != nil {
+			renderTemplate(w, "schedule_delete_confirm.html", map[string]interface{}{"Error": "Invalid schedule response", "ScheduleID": id})
+			return
+		}
+
+		renderTemplate(w, "schedule_delete_confirm.html", map[string]interface{}{"Schedule": schedule})
+	}
+}
+
+func scheduleDelete(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		_, status, err := apiDelete(apiBase, "/schedules/"+id, tok)
+		if err != nil {
+			renderTemplate(w, "schedule_delete_confirm.html", map[string]interface{}{"Error": err.Error(), "ScheduleID": id})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
+		if status == http.StatusNoContent || status == http.StatusOK {
+			http.Redirect(w, r, "/schedules", http.StatusFound)
+			return
+		}
+		renderTemplate(w, "schedule_delete_confirm.html", map[string]interface{}{"Error": "Delete failed", "ScheduleID": id})
+	}
+}
+
+// ====== Audit log (Web UI) ======
+
+func auditList(apiBase string) http.HandlerFunc {
+	const defaultLimit = 50
+	return func(w http.ResponseWriter, r *http.Request) {
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		limit := defaultLimit
+		if l := r.URL.Query().Get("limit"); l != "" {
+			if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 200 {
+				limit = n
+			}
+		}
+		offset := 0
+		if o := r.URL.Query().Get("offset"); o != "" {
+			if n, err := strconv.Atoi(o); err == nil && n >= 0 {
+				offset = n
+			}
+		}
+
+		path := fmt.Sprintf("/audit?limit=%d&offset=%d", limit, offset)
+		data, status, err := apiGet(apiBase, path, tok)
+		if err != nil {
+			renderTemplate(w, "audit.html", map[string]interface{}{"Error": err.Error()})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
+		if status != http.StatusOK {
+			renderTemplate(w, "audit.html", map[string]interface{}{"Error": "API error: " + string(data)})
+			return
+		}
+
+		var entries []struct {
+			ID           int       `json:"id"`
+			UserID       int       `json:"user_id"`
+			Action       string    `json:"action"`
+			ResourceType string    `json:"resource_type"`
+			ResourceID   int       `json:"resource_id"`
+			Details      string    `json:"details"`
+			CreatedAt    time.Time `json:"created_at"`
+		}
+		if err := json.Unmarshal(data, &entries); err != nil {
+			renderTemplate(w, "audit.html", map[string]interface{}{"Error": "Invalid audit response"})
+			return
+		}
+
+		hasNext := len(entries) == limit
+		prevOffset := 0
+		if offset > 0 {
+			prevOffset = offset - limit
+			if prevOffset < 0 {
+				prevOffset = 0
+			}
+		}
+		nextOffset := offset + limit
+
+		renderTemplate(w, "audit.html", map[string]interface{}{
+			"Entries":    entries,
+			"Limit":      limit,
+			"Offset":     offset,
+			"PrevOffset": prevOffset,
+			"NextOffset": nextOffset,
+			"HasPrev":    offset > 0,
+			"HasNext":    hasNext,
+		})
 	}
 }
 

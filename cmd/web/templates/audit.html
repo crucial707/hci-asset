@@ -1,0 +1,29 @@
+{{define "title"}}Audit log{{end}}
+{{define "content"}}
+<h1>Audit log</h1>
+{{if .Error}}<p class="error">{{.Error}}</p>{{else}}
+<p>Who created, updated, or deleted assets or users.</p>
+<table>
+  <thead><tr><th>ID</th><th>User ID</th><th>Action</th><th>Resource</th><th>Resource ID</th><th>Details</th><th>When</th></tr></thead>
+  <tbody>
+  {{range .Entries}}<tr>
+    <td>{{.ID}}</td>
+    <td>{{.UserID}}</td>
+    <td>{{.Action}}</td>
+    <td>{{.ResourceType}}</td>
+    <td>{{.ResourceID}}</td>
+    <td>{{.Details}}</td>
+    <td>{{.CreatedAt}}</td>
+  </tr>{{end}}
+  </tbody>
+</table>
+{{if not .Entries}}<p>No audit entries.</p>{{end}}
+{{if or .HasPrev .HasNext}}
+<p>
+  {{if .HasPrev}}<a href="/audit?limit={{.Limit}}&offset={{.PrevOffset}}">← Previous</a>{{end}}
+  {{if and .HasPrev .HasNext}} · {{end}}
+  {{if .HasNext}}<a href="/audit?limit={{.Limit}}&offset={{.NextOffset}}">Next →</a>{{end}}
+</p>
+{{end}}
+{{end}}
+{{end}}

@@ -296,7 +296,7 @@ From the repo root:
    ```bash
    docker compose up -d
    ```
-   This starts Postgres, the API (port 8080), and the Web UI (port 3000).
+   This starts Postgres, the API (port 8080), and the Web UI (port 3000). After changing web or API code, rebuild and recreate: `docker compose up -d --build` (or `docker compose build web` then `docker compose up -d web` for web-only changes).
 
 2. **Create the database tables** (required once per environment). See [Database setup (PostgreSQL)](#database-setup-postgresql) for details. With Docker Compose and container name `asset-postgres`:
    ```bash

@@ -1,0 +1,17 @@
+{{define "title"}}{{if .Schedule}}Edit schedule{{else}}New schedule{{end}}{{end}}
+{{define "content"}}
+<h1>{{if .Schedule}}Edit schedule{{else}}New schedule{{end}}</h1>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+<form method="post" action="{{.FormAction}}">
+  <label for="target">Target (IP range or CIDR)</label>
+  <input type="text" id="target" name="target" placeholder="e.g. 192.168.1.0/24" required {{if .Schedule}}value="{{.Schedule.Target}}"{{end}}>
+
+  <label for="cron_expr">Cron expression (5 fields: minute hour day month weekday)</label>
+  <input type="text" id="cron_expr" name="cron_expr" placeholder="e.g. 0 * * * * (hourly)" required {{if .Schedule}}value="{{.Schedule.CronExpr}}"{{end}}>
+
+  <label><input type="checkbox" name="enabled" value="1" {{if not .Schedule}}checked{{else}}{{if .Schedule.Enabled}}checked{{end}}{{end}}> Enabled</label>
+
+  <button type="submit">{{.SubmitLabel}}</button>
+</form>
+<p><a href="/schedules">← Schedules</a></p>
+{{end}}

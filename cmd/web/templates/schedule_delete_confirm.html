@@ -1,0 +1,14 @@
+{{define "title"}}Delete schedule{{end}}
+{{define "content"}}
+<h1>Delete schedule</h1>
+{{if .Error}}
+<p class="error">{{.Error}}</p>
+<p><a href="/schedules">← Schedules</a></p>
+{{else}}
+<p>Are you sure you want to delete the schedule for <strong>{{.Schedule.Target}}</strong> (cron: {{.Schedule.CronExpr}})? Recurring scans for this target will stop.</p>
+<form method="post" action="/schedules/{{.Schedule.ID}}/delete">
+  <button type="submit">Delete</button>
+  <a href="/schedules">Cancel</a>
+</form>
+{{end}}
+{{end}}
