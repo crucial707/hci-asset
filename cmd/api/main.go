@@ -68,9 +68,10 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 
-	// ====== Auth endpoints (public) ======
-	r.Post("/auth/register", authHandler.Register)
-	r.Post("/auth/login", authHandler.Login)
+	// ====== Auth endpoints (public, rate limited) ======
+	authLimiter := middleware.AuthRateLimiter()
+	r.With(authLimiter.Middleware).Post("/auth/register", authHandler.Register)
+	r.With(authLimiter.Middleware).Post("/auth/login", authHandler.Login)
 
 	// JWT middleware for protected routes
 	jwtMiddleware := middleware.JWTMiddleware([]byte(cfg.JWTSecret))
