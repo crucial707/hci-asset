@@ -187,6 +187,31 @@ A web dashboard runs as a separate binary and talks to the API.
 
 --------------------------------------------------------------------
 
+## Development
+
+### Running tests
+
+From the repo root:
+
+- **All tests** (repo, handlers, CLI, etc.):
+  ```bash
+  go test ./...
+  ```
+
+- **Repo tests only** (database layer with go-sqlmock):
+  ```bash
+  go test ./internal/repo/...
+  ```
+
+- **Handler tests only** (API handlers with mocked repos):
+  ```bash
+  go test ./internal/handlers/...
+  ```
+
+**CI**: A GitHub Actions workflow (`.github/workflows/ci.yml`) runs on push and pull requests to `main`/`master`: it checks out the repo, sets up Go from `go.mod`, runs `go build ./...` and `go test -v ./...`.
+
+--------------------------------------------------------------------
+
 =Verify the API is Running=
 "curl http://localhost:8080/health"
 
