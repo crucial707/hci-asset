@@ -1,8 +1,6 @@
 package config
 
-import (
-	"os"
-)
+import "os"
 
 type Config struct {
 	Port     string
@@ -18,6 +16,11 @@ type Config struct {
 
 	// NmapPath is the path to the nmap executable (e.g. "nmap" for Linux/Mac, or full Windows path).
 	NmapPath string
+
+	// TLSCertFile and TLSKeyFile enable HTTPS when both are set.
+	// When empty, the API listens with plain HTTP.
+	TLSCertFile string
+	TLSKeyFile  string
 }
 
 func Load() Config {
@@ -35,6 +38,10 @@ func Load() Config {
 
 		// Default "nmap" works on Linux/Mac when nmap is in PATH; set NMAP_PATH for Windows or custom install.
 		NmapPath: getEnv("NMAP_PATH", "nmap"),
+
+		// Optional TLS configuration for HTTPS.
+		TLSCertFile: getEnv("TLS_CERT_FILE", ""),
+		TLSKeyFile:  getEnv("TLS_KEY_FILE", ""),
 	}
 }
 

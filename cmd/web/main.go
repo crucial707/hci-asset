@@ -96,7 +96,7 @@ func formatDuration(d time.Duration) string {
 	return d.String()
 }
 
-// requireAuth redirects to /login if cookie is missing or invalid.
+// requireAuth redirects to /login if cookie is missing or if the API returns 401 (invalid/expired token).
 func requireAuth(apiBase string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -105,7 +105,12 @@ func requireAuth(apiBase string) func(http.Handler) http.Handler {
 				http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.Path), http.StatusFound)
 				return
 			}
-			// Optional: validate token by calling API (e.g. GET /users/me). For now we just require presence.
+			// Validate token with API so expired/invalid tokens send user to login before any page loads.
+			_, status, _ := apiGet(apiBase, "/assets?limit=1", token.Value)
+			if status == http.StatusUnauthorized {
+				clearAuthAndRedirectToLogin(w, r)
+				return
+			}
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -188,6 +193,17 @@ func logout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
+// clearAuthAndRedirectToLogin clears the token cookie and redirects to login with next=current path.
+// Call when the API returns 401 (expired or invalid token) so the user can sign in again.
+func clearAuthAndRedirectToLogin(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", MaxAge: -1})
+	next := r.URL.Path
+	if r.URL.RawQuery != "" {
+		next += "?" + r.URL.RawQuery
+	}
+	http.Redirect(w, r, "/login?next="+url.QueryEscape(next), http.StatusFound)
+}
+
 // apiGet performs GET to API with token from request cookie.
 func apiGet(apiBase, path, token string) ([]byte, int, error) {
 	req, _ := http.NewRequest("GET", apiBase+path, nil)
@@ -263,6 +279,10 @@ func dashboard(apiBase string) http.HandlerFunc {
 			renderTemplate(w, "dashboard.html", map[string]interface{}{"Error": err.Error()})
 			return
 		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
 		if status != http.StatusOK {
 			renderTemplate(w, "dashboard.html", map[string]interface{}{"Error": "API error: " + string(data)})
 			return
@@ -312,6 +332,10 @@ func assetsList(apiBase string) http.HandlerFunc {
 		data, status, err := apiGet(apiBase, path, tok)
 		if err != nil {
 			renderTemplate(w, "assets.html", map[string]interface{}{"Error": err.Error(), "SearchQuery": search, "Page": page})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
 			return
 		}
 		if status != http.StatusOK {
@@ -367,6 +391,10 @@ func assetDetail(apiBase string) http.HandlerFunc {
 			renderTemplate(w, "asset_detail.html", map[string]interface{}{"Error": err.Error()})
 			return
 		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
 		if status != http.StatusOK {
 			renderTemplate(w, "asset_detail.html", map[string]interface{}{"Error": "API error: " + string(data)})
 			return
@@ -404,6 +432,10 @@ func assetHeartbeat(apiBase string) http.HandlerFunc {
 		_, status, err := apiPost(apiBase, "/assets/"+id+"/heartbeat", tok, []byte("{}"))
 		if err != nil {
 			renderTemplate(w, "asset_detail.html", map[string]interface{}{"Error": err.Error()})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
 			return
 		}
 		if status != http.StatusOK {
@@ -460,6 +492,10 @@ func assetCreate(apiBase string) http.HandlerFunc {
 			})
 			return
 		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
 		if status < http.StatusOK || status >= http.StatusMultipleChoices {
 			renderTemplate(w, "asset_form.html", map[string]interface{}{
 				"Error":       "API error: " + string(data),
@@ -499,6 +535,10 @@ func assetEditForm(apiBase string) http.HandlerFunc {
 			renderTemplate(w, "asset_form.html", map[string]interface{}{
 				"Error": err.Error(),
 			})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
 			return
 		}
 		if status != http.StatusOK {
@@ -565,6 +605,10 @@ func assetUpdate(apiBase string) http.HandlerFunc {
 			})
 			return
 		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
 		if status < http.StatusOK || status >= http.StatusMultipleChoices {
 			renderTemplate(w, "asset_form.html", map[string]interface{}{
 				"Error":       "API error: " + string(data),
@@ -604,6 +648,10 @@ func assetDeleteConfirm(apiBase string) http.HandlerFunc {
 			renderTemplate(w, "asset_delete_confirm.html", map[string]interface{}{"Error": err.Error(), "AssetID": id})
 			return
 		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
 		if status != http.StatusOK {
 			renderTemplate(w, "asset_delete_confirm.html", map[string]interface{}{"Error": "Asset not found or API error", "AssetID": id})
 			return
@@ -641,6 +689,10 @@ func assetDelete(apiBase string) http.HandlerFunc {
 			})
 			return
 		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
 		if status == http.StatusNoContent {
 			http.Redirect(w, r, "/assets", http.StatusFound)
 			return
@@ -668,6 +720,10 @@ func scanPage(apiBase string) http.HandlerFunc {
 		data, status, err := apiGet(apiBase, "/scans", tok)
 		if err != nil {
 			renderTemplate(w, "scan.html", map[string]interface{}{"Error": err.Error()})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
 			return
 		}
 		if status != http.StatusOK {
@@ -716,6 +772,10 @@ func startScan(apiBase string) http.HandlerFunc {
 			renderTemplate(w, "scan.html", map[string]interface{}{"Error": err.Error()})
 			return
 		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
 		if status != http.StatusOK {
 			var errResp struct{ Error string }
 			_ = json.Unmarshal(data, &errResp)
@@ -752,6 +812,10 @@ func scanDetail(apiBase string) http.HandlerFunc {
 		data, status, err := apiGet(apiBase, "/scans/"+jobID, tok)
 		if err != nil {
 			renderTemplate(w, "scan_detail.html", map[string]interface{}{"Error": err.Error(), "JobID": jobID})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
 			return
 		}
 		if status == http.StatusNotFound {
@@ -820,6 +884,10 @@ func cancelScan(apiBase string) http.HandlerFunc {
 			http.Redirect(w, r, "/scans/"+jobID+"?error="+url.QueryEscape(err.Error()), http.StatusFound)
 			return
 		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
 		if status != http.StatusOK {
 			http.Redirect(w, r, "/scans/"+jobID, http.StatusFound)
 			return
@@ -841,6 +909,10 @@ func usersList(apiBase string) http.HandlerFunc {
 		data, status, err := apiGet(apiBase, "/users", tok)
 		if err != nil {
 			renderTemplate(w, "users.html", map[string]interface{}{"Error": err.Error()})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
 			return
 		}
 		if status != http.StatusOK {
@@ -904,6 +976,10 @@ func userCreate(apiBase string) http.HandlerFunc {
 			})
 			return
 		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
 		if status < http.StatusOK || status >= http.StatusMultipleChoices {
 			var errResp struct{ Error string }
 			_ = json.Unmarshal(data, &errResp)
@@ -947,6 +1023,10 @@ func userEditForm(apiBase string) http.HandlerFunc {
 		data, status, err := apiGet(apiBase, "/users/"+id, tok)
 		if err != nil {
 			renderTemplate(w, "user_form.html", map[string]interface{}{"Error": err.Error()})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
 			return
 		}
 		if status != http.StatusOK {
@@ -1004,6 +1084,10 @@ func userUpdate(apiBase string) http.HandlerFunc {
 			renderTemplate(w, "user_form.html", editPayload(err.Error()))
 			return
 		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
 		if status < http.StatusOK || status >= http.StatusMultipleChoices {
 			var errResp struct{ Error string }
 			_ = json.Unmarshal(data, &errResp)
@@ -1031,6 +1115,10 @@ func userDeleteConfirm(apiBase string) http.HandlerFunc {
 		data, status, err := apiGet(apiBase, "/users/"+id, tok)
 		if err != nil {
 			renderTemplate(w, "user_delete_confirm.html", map[string]interface{}{"Error": err.Error(), "UserID": id})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
 			return
 		}
 		if status != http.StatusOK {
@@ -1068,6 +1156,10 @@ func userDelete(apiBase string) http.HandlerFunc {
 				"Error":  err.Error(),
 				"UserID": id,
 			})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
 			return
 		}
 		if status == http.StatusNoContent {

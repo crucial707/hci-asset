@@ -103,6 +103,16 @@ func main() {
 	r.With(jwtMiddleware).Post("/scans/{id}/cancel", scanHandler.CancelScan)
 
 	// ==========================
-	log.Println("API server running on :8080")
-	http.ListenAndServe(":8080", r)
+	addr := ":" + cfg.Port
+	if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
+		log.Printf("API server running with HTTPS on %s", addr)
+		if err := http.ListenAndServeTLS(addr, cfg.TLSCertFile, cfg.TLSKeyFile, r); err != nil {
+			log.Fatalf("ListenAndServeTLS failed: %v", err)
+		}
+	} else {
+		log.Printf("API server running on %s (HTTP)", addr)
+		if err := http.ListenAndServe(addr, r); err != nil {
+			log.Fatalf("ListenAndServe failed: %v", err)
+		}
+	}
 }

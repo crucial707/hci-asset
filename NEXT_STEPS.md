@@ -17,7 +17,7 @@
 ## Security & operations
 
 - [x] **Rate limiting** – Per-IP limit on auth: `internal/middleware/ratelimit.go` (10 req/min per IP, burst 5) applied to `POST /auth/login` and `POST /auth/register`; returns 429 JSON when exceeded.
-- [ ] **HTTPS / TLS** – Run API and Web UI behind TLS (reverse proxy or env-driven TLS in server).
+- [x] **HTTPS / TLS** – API reads `TLS_CERT_FILE` / `TLS_KEY_FILE` from env (`internal/config.Config`) and, when both are set, serves HTTPS via `http.ListenAndServeTLS`; otherwise it falls back to plain HTTP.
 - [ ] **Health check with DB** – `/health` (or `/ready`) pings Postgres so orchestrators can fail unhealthy instances.
 
 ## Features
