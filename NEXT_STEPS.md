@@ -11,8 +11,8 @@
 
 ## Testing
 
-- [ ] **More handler tests** – Auth (login), user CRUD, scan start/status handlers with httptest + mocked repos.
-- [ ] **API integration test** – Small test that hits real HTTP routes (test DB or sqlmock-backed server) for a few critical flows.
+- [x] **More handler tests** – `internal/handlers/auth_test.go` (Login, Login invalid/bad JSON, Register, Register bad JSON); `internal/handlers/user_test.go` (CreateUser, ListUsers, GetUser, GetUser not found/invalid ID, UpdateUser, DeleteUser); `internal/handlers/scan_test.go` (StartScan, ListScans, GetScanStatus, CancelScan; all with httptest + sqlmock where needed).
+- [x] **API integration test** – `cmd/api/api_test.go`: full router built with `newRouter(db, cfg)` and sqlmock DB; `TestAPI_LoginThenListAssets` (POST /auth/login → GET /assets with Bearer token); `TestAPI_Health` for /health.
 
 ## Security & operations
 
