@@ -26,16 +26,16 @@ func TestAPI_LoginThenListAssets(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username"}).AddRow(1, "integration"))
 
 	// GET /assets: List(10, 0) default limit/offset
-	mock.ExpectQuery(`SELECT id, name, description, last_seen FROM assets ORDER BY id LIMIT \$1 OFFSET \$2`).
+	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen FROM assets ORDER BY id LIMIT \$1 OFFSET \$2`).
 		WithArgs(10, 0).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "last_seen"}).
-			AddRow(1, "asset1", "desc1", nil))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen"}).
+			AddRow(1, "asset1", "desc1", "{}", nil))
 
 	cfg := config.Config{
 		JWTSecret: "test-secret-for-integration",
 		NmapPath:  "nmap",
 	}
-	r := newRouter(db, cfg)
+	r, _, _ := newRouter(db, cfg)
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
@@ -93,7 +93,7 @@ func TestAPI_Health(t *testing.T) {
 	defer db.Close()
 
 	cfg := config.Config{JWTSecret: "x", NmapPath: "nmap"}
-	r := newRouter(db, cfg)
+	r, _, _ := newRouter(db, cfg)
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
@@ -116,7 +116,7 @@ func TestAPI_Ready(t *testing.T) {
 	defer db.Close()
 
 	cfg := config.Config{JWTSecret: "x", NmapPath: "nmap"}
-	r := newRouter(db, cfg)
+	r, _, _ := newRouter(db, cfg)
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 

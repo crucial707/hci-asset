@@ -9,6 +9,9 @@
   <label for="description">Description</label>
   <textarea id="description" name="description" rows="3" required>{{if .Asset}}{{.Asset.Description}}{{end}}</textarea>
 
+  <label for="tags">Tags (comma-separated)</label>
+  <input type="text" id="tags" name="tags" placeholder="e.g. production, server" {{if .Asset}}{{if .Asset.Tags}}value="{{range $i, $t := .Asset.Tags}}{{if $i}}, {{end}}{{$t}}{{end}}"{{end}}{{end}}>
+
   <button type="submit">{{.SubmitLabel}}</button>
 </form>
 <p><a href="/assets">← Assets</a></p>

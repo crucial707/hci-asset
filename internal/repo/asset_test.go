@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/lib/pq"
 )
 
 func TestAssetRepo_Create(t *testing.T) {
@@ -15,12 +16,12 @@ func TestAssetRepo_Create(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`INSERT INTO assets \(name, description\) VALUES \(\$1, \$2\) RETURNING id`).
-		WithArgs("my-asset", "my desc").
+	mock.ExpectQuery(`INSERT INTO assets \(name, description, tags\) VALUES \(\$1, \$2, \$3\) RETURNING id`).
+		WithArgs("my-asset", "my desc", pq.Array([]string{})).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(42))
 
 	repo := NewAssetRepo(db)
-	asset, err := repo.Create("my-asset", "my desc")
+	asset, err := repo.Create("my-asset", "my desc", nil)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -40,10 +41,10 @@ func TestAssetRepo_Get(t *testing.T) {
 	defer db.Close()
 
 	now := time.Now()
-	mock.ExpectQuery(`SELECT id, name, description, last_seen FROM assets WHERE id=\$1`).
+	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen FROM assets WHERE id=\$1`).
 		WithArgs(1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "last_seen"}).
-			AddRow(1, "a1", "desc1", now))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen"}).
+			AddRow(1, "a1", "desc1", "{}", now))
 
 	repo := NewAssetRepo(db)
 	asset, err := repo.Get(1)
@@ -65,7 +66,7 @@ func TestAssetRepo_Get_NotFound(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, name, description, last_seen FROM assets WHERE id=\$1`).
+	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen FROM assets WHERE id=\$1`).
 		WithArgs(999).
 		WillReturnError(sql.ErrNoRows)
 
@@ -89,11 +90,11 @@ func TestAssetRepo_List(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, name, description, last_seen FROM assets ORDER BY id LIMIT \$1 OFFSET \$2`).
+	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen FROM assets ORDER BY id LIMIT \$1 OFFSET \$2`).
 		WithArgs(10, 0).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "last_seen"}).
-			AddRow(1, "n1", "d1", nil).
-			AddRow(2, "n2", "d2", nil))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen"}).
+			AddRow(1, "n1", "d1", "{}", nil).
+			AddRow(2, "n2", "d2", "{}", nil))
 
 	repo := NewAssetRepo(db)
 	assets, err := repo.List(10, 0)
@@ -141,10 +142,10 @@ func TestAssetRepo_Heartbeat(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	now := time.Now()
-	mock.ExpectQuery(`SELECT id, name, description, last_seen FROM assets WHERE id=\$1`).
+	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen FROM assets WHERE id=\$1`).
 		WithArgs(1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "last_seen"}).
-			AddRow(1, "a1", "d1", now))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen"}).
+			AddRow(1, "a1", "d1", "{}", now))
 
 	repo := NewAssetRepo(db)
 	asset, err := repo.Heartbeat(1)

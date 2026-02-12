@@ -4,22 +4,24 @@
 <p><a href="/assets/new">+ New asset</a></p>
 <form method="get" action="/assets" style="margin-bottom: 1rem;">
   <input type="text" name="search" value="{{.SearchQuery}}" placeholder="Search by name or description">
+  <input type="text" name="tag" value="{{.TagFilter}}" placeholder="Filter by tag">
   <button type="submit">Search</button>
-  {{if .SearchQuery}}<a href="/assets">Clear</a>{{end}}
+  {{if or .SearchQuery .TagFilter}}<a href="/assets">Clear</a>{{end}}
 </form>
-{{if or .PrevPage .NextPage}}
+  {{if or .PrevPage .NextPage}}
 <p class="pagination">
-  {{if .PrevPage}}<a href="/assets?page={{.PrevPage}}{{if .SearchQuery}}&search={{.SearchEncoded}}{{end}}">← Previous</a>{{end}}
+  {{if .PrevPage}}<a href="/assets?page={{.PrevPage}}{{if .SearchQuery}}&search={{.SearchEncoded}}{{end}}{{if .TagFilter}}&tag={{.TagEncoded}}{{end}}">← Previous</a>{{end}}
   {{if and .PrevPage .NextPage}} &nbsp; {{end}}
-  {{if .NextPage}}<a href="/assets?page={{.NextPage}}{{if .SearchQuery}}&search={{.SearchEncoded}}{{end}}">Next →</a>{{end}}
+  {{if .NextPage}}<a href="/assets?page={{.NextPage}}{{if .SearchQuery}}&search={{.SearchEncoded}}{{end}}{{if .TagFilter}}&tag={{.TagEncoded}}{{end}}">Next →</a>{{end}}
 </p>
 {{end}}
 <table>
-  <thead><tr><th>ID</th><th>Name</th><th>IP / Network</th><th>Description</th><th>Last seen</th><th></th></tr></thead>
+  <thead><tr><th>ID</th><th>Name</th><th>Tags</th><th>IP / Network</th><th>Description</th><th>Last seen</th><th></th></tr></thead>
   <tbody>
   {{range .Assets}}<tr>
     <td>{{.ID}}</td>
     <td>{{.Name}}</td>
+    <td>{{range $i, $t := .Tags}}{{if $i}}, {{end}}{{$t}}{{end}}</td>
     <td>{{.NetworkName}}</td>
     <td>{{.Description}}</td>
     <td>{{if .LastSeen}}{{.LastSeen}}{{else}}Never{{end}}</td>

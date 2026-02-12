@@ -51,13 +51,24 @@ func (h *ScanHandler) StartScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	jobID := h.StartScanTarget(input.Target)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"job_id": jobID,
+		"status": "running",
+	})
+}
+
+// StartScanTarget starts a scan for the given target and returns the job ID.
+// Used by the API (StartScan) and by the schedule runner.
+func (h *ScanHandler) StartScanTarget(target string) string {
 	h.scanJobsMu.Lock()
 	if h.scanJobs == nil {
 		h.scanJobs = make(map[string]*ScanJob)
 	}
 	jobID := strconv.Itoa(len(h.scanJobs) + 1)
 	job := &ScanJob{
-		Target:    input.Target,
+		Target:    target,
 		Status:    "running",
 		StartedAt: time.Now(),
 		cancel:    make(chan struct{}),
@@ -65,13 +76,8 @@ func (h *ScanHandler) StartScan(w http.ResponseWriter, r *http.Request) {
 	h.scanJobs[jobID] = job
 	h.scanJobsMu.Unlock()
 
-	go h.runScan(jobID, input.Target, job.cancel)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"job_id": jobID,
-		"status": "running",
-	})
+	go h.runScan(jobID, target, job.cancel)
+	return jobID
 }
 
 // ==========================

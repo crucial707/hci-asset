@@ -22,11 +22,11 @@
 
 ## Features
 
-- [ ] **Audit log** – Record who created/updated/deleted assets or users and when.
-- [ ] **Asset tags or groups** – Filter and group assets in the UI.
-- [ ] **Scan scheduling** – Recurring scans (e.g. cron-like) in addition to on-demand.
+- [x] **Audit log** – Record who created/updated/deleted assets or users and when (table, repo, handler, GET /audit).
+- [x] **Asset tags or groups** – Filter and group assets in the UI (tags column, API create/update/list by tag, Web UI form and list filter).
+- [x] **Scan scheduling** – Recurring scans (cron-like): scan_schedules table, GET/POST/PUT/DELETE /schedules, background scheduler runs enabled schedules.
 
 ## Docs & DX
 
-- [ ] **API section in README** – Document main endpoints and how auth works.
-- [ ] **Local dev** – Script or short doc for `docker compose up` plus DB setup and running tests.
+- [x] **API section in README** – New "## API" section: health/ready, auth (register, login, Bearer token), tables for assets, users, scans endpoints and error format.
+- [x] **Local dev** – README "Local dev (quick start)" under Development: docker compose up, create DB tables (with link to Database setup), run tests, optional local API/Web against Postgres.

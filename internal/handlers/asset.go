@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/crucial707/hci-asset/internal/middleware"
 	"github.com/crucial707/hci-asset/internal/models"
 	"github.com/crucial707/hci-asset/internal/repo"
 	"github.com/go-chi/chi/v5"
@@ -20,15 +21,17 @@ const (
 // Asset Input Struct
 // ==========================
 type AssetInput struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Tags        []string `json:"tags"`
 }
 
 // ==========================
 // AssetHandler
 // ==========================
 type AssetHandler struct {
-	Repo *repo.AssetRepo
+	Repo      *repo.AssetRepo
+	AuditRepo *repo.AuditRepo
 }
 
 // ==========================
@@ -50,10 +53,16 @@ func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	asset, err := h.Repo.Create(input.Name, input.Description)
+	asset, err := h.Repo.Create(input.Name, input.Description, input.Tags)
 	if err != nil {
 		JSONError(w, "failed to create asset", http.StatusInternalServerError)
 		return
+	}
+
+	if h.AuditRepo != nil {
+		if userID, ok := middleware.GetUserID(r.Context()); ok {
+			_ = h.AuditRepo.Log(userID, "create", "asset", asset.ID, "")
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -78,12 +87,16 @@ func (h *AssetHandler) ListAssets(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	search := r.URL.Query().Get("search")
+	tag := r.URL.Query().Get("tag")
 
 	var assets []models.Asset
 	var err error
-	if search != "" {
+	switch {
+	case tag != "":
+		assets, err = h.Repo.ListByTag(tag, limit, offset)
+	case search != "":
 		assets, err = h.Repo.Search(search, limit, offset)
-	} else {
+	default:
 		assets, err = h.Repo.List(limit, offset)
 	}
 	if err != nil {
@@ -139,10 +152,16 @@ func (h *AssetHandler) UpdateAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	asset, err := h.Repo.Update(id, input.Name, input.Description)
+	asset, err := h.Repo.Update(id, input.Name, input.Description, input.Tags)
 	if err != nil {
 		JSONError(w, "failed to update asset", http.StatusInternalServerError)
 		return
+	}
+
+	if h.AuditRepo != nil {
+		if userID, ok := middleware.GetUserID(r.Context()); ok {
+			_ = h.AuditRepo.Log(userID, "update", "asset", id, "")
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -188,6 +207,12 @@ func (h *AssetHandler) DeleteAsset(w http.ResponseWriter, r *http.Request) {
 	if err := h.Repo.Delete(id); err != nil {
 		JSONError(w, "failed to delete asset", http.StatusInternalServerError)
 		return
+	}
+
+	if h.AuditRepo != nil {
+		if userID, ok := middleware.GetUserID(r.Context()); ok {
+			_ = h.AuditRepo.Log(userID, "delete", "asset", id, "")
+		}
 	}
 
 	w.WriteHeader(http.StatusNoContent)

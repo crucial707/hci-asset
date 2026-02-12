@@ -316,6 +316,7 @@ func assetsList(apiBase string) http.HandlerFunc {
 		}
 
 		search := strings.TrimSpace(r.URL.Query().Get("search"))
+		tagFilter := strings.TrimSpace(r.URL.Query().Get("tag"))
 		page := 1
 		if p := r.URL.Query().Get("page"); p != "" {
 			if n, err := strconv.Atoi(p); err == nil && n > 0 {
@@ -328,10 +329,13 @@ func assetsList(apiBase string) http.HandlerFunc {
 		if search != "" {
 			path += "&search=" + url.QueryEscape(search)
 		}
+		if tagFilter != "" {
+			path += "&tag=" + url.QueryEscape(tagFilter)
+		}
 
 		data, status, err := apiGet(apiBase, path, tok)
 		if err != nil {
-			renderTemplate(w, "assets.html", map[string]interface{}{"Error": err.Error(), "SearchQuery": search, "Page": page})
+			renderTemplate(w, "assets.html", map[string]interface{}{"Error": err.Error(), "SearchQuery": search, "TagFilter": tagFilter, "Page": page})
 			return
 		}
 		if status == http.StatusUnauthorized {
@@ -339,19 +343,20 @@ func assetsList(apiBase string) http.HandlerFunc {
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "assets.html", map[string]interface{}{"Error": "API error: " + string(data), "SearchQuery": search, "Page": page})
+			renderTemplate(w, "assets.html", map[string]interface{}{"Error": "API error: " + string(data), "SearchQuery": search, "TagFilter": tagFilter, "Page": page})
 			return
 		}
 
 		var assets []struct {
-			ID          int     `json:"id"`
-			Name        string  `json:"name"`
-			Description string  `json:"description"`
-			NetworkName string  `json:"network_name"`
-			LastSeen    *string `json:"last_seen"`
+			ID          int      `json:"id"`
+			Name        string   `json:"name"`
+			Description string   `json:"description"`
+			Tags        []string `json:"tags"`
+			NetworkName string   `json:"network_name"`
+			LastSeen    *string  `json:"last_seen"`
 		}
 		if err := json.Unmarshal(data, &assets); err != nil {
-			renderTemplate(w, "assets.html", map[string]interface{}{"Error": "Invalid assets response", "SearchQuery": search, "Page": page})
+			renderTemplate(w, "assets.html", map[string]interface{}{"Error": "Invalid assets response", "SearchQuery": search, "TagFilter": tagFilter, "Page": page})
 			return
 		}
 
@@ -365,14 +370,17 @@ func assetsList(apiBase string) http.HandlerFunc {
 			nextPage = page + 1
 		}
 		searchEncoded := url.QueryEscape(search)
+		tagEncoded := url.QueryEscape(tagFilter)
 
 		renderTemplate(w, "assets.html", map[string]interface{}{
-			"Assets":          assets,
-			"SearchQuery":     search,
-			"SearchEncoded":   searchEncoded,
-			"Page":            page,
-			"PrevPage":        prevPage,
-			"NextPage":        nextPage,
+			"Assets":        assets,
+			"SearchQuery":   search,
+			"SearchEncoded": searchEncoded,
+			"TagFilter":     tagFilter,
+			"TagEncoded":    tagEncoded,
+			"Page":          page,
+			"PrevPage":      prevPage,
+			"NextPage":      nextPage,
 		})
 	}
 }
@@ -401,11 +409,12 @@ func assetDetail(apiBase string) http.HandlerFunc {
 		}
 
 		var asset struct {
-			ID          int     `json:"id"`
-			Name        string  `json:"name"`
-			Description string  `json:"description"`
-			NetworkName string  `json:"network_name"`
-			LastSeen    *string `json:"last_seen"`
+			ID          int      `json:"id"`
+			Name        string   `json:"name"`
+			Description string   `json:"description"`
+			Tags        []string `json:"tags"`
+			NetworkName string   `json:"network_name"`
+			LastSeen    *string  `json:"last_seen"`
 		}
 		if err := json.Unmarshal(data, &asset); err != nil {
 			renderTemplate(w, "asset_detail.html", map[string]interface{}{"Error": "Invalid asset response"})
@@ -458,6 +467,18 @@ func assetCreateForm(apiBase string) http.HandlerFunc {
 	}
 }
 
+func parseTagsFromForm(s string) []string {
+	parts := strings.Split(s, ",")
+	var out []string
+	for _, p := range parts {
+		t := strings.TrimSpace(p)
+		if t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 func assetCreate(apiBase string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
@@ -466,6 +487,7 @@ func assetCreate(apiBase string) http.HandlerFunc {
 		}
 		name := strings.TrimSpace(r.FormValue("name"))
 		description := strings.TrimSpace(r.FormValue("description"))
+		tags := parseTagsFromForm(r.FormValue("tags"))
 
 		if name == "" || description == "" {
 			renderTemplate(w, "asset_form.html", map[string]interface{}{
@@ -482,7 +504,11 @@ func assetCreate(apiBase string) http.HandlerFunc {
 			tok = token.Value
 		}
 
-		body := []byte(fmt.Sprintf(`{"name":%q,"description":%q}`, name, description))
+		payload := map[string]interface{}{"name": name, "description": description}
+		if len(tags) > 0 {
+			payload["tags"] = tags
+		}
+		body, _ := json.Marshal(payload)
 		data, status, err := apiPost(apiBase, "/assets", tok, body)
 		if err != nil {
 			renderTemplate(w, "asset_form.html", map[string]interface{}{
@@ -549,11 +575,12 @@ func assetEditForm(apiBase string) http.HandlerFunc {
 		}
 
 		var asset struct {
-			ID          int     `json:"id"`
-			Name        string  `json:"name"`
-			Description string  `json:"description"`
-			NetworkName string  `json:"network_name"`
-			LastSeen    *string `json:"last_seen"`
+			ID          int      `json:"id"`
+			Name        string   `json:"name"`
+			Description string   `json:"description"`
+			Tags        []string `json:"tags"`
+			NetworkName string   `json:"network_name"`
+			LastSeen    *string  `json:"last_seen"`
 		}
 		if err := json.Unmarshal(data, &asset); err != nil {
 			renderTemplate(w, "asset_form.html", map[string]interface{}{
@@ -579,6 +606,7 @@ func assetUpdate(apiBase string) http.HandlerFunc {
 		}
 		name := strings.TrimSpace(r.FormValue("name"))
 		description := strings.TrimSpace(r.FormValue("description"))
+		tags := parseTagsFromForm(r.FormValue("tags"))
 
 		if name == "" || description == "" {
 			renderTemplate(w, "asset_form.html", map[string]interface{}{
@@ -595,7 +623,8 @@ func assetUpdate(apiBase string) http.HandlerFunc {
 			tok = token.Value
 		}
 
-		body := []byte(fmt.Sprintf(`{"name":%q,"description":%q}`, name, description))
+		payload := map[string]interface{}{"name": name, "description": description, "tags": tags}
+		body, _ := json.Marshal(payload)
 		data, status, err := apiPut(apiBase, "/assets/"+id, tok, body)
 		if err != nil {
 			renderTemplate(w, "asset_form.html", map[string]interface{}{

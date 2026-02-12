@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/crucial707/hci-asset/internal/models"
+	"github.com/lib/pq"
 )
 
 type AssetRepo struct {
@@ -26,11 +27,14 @@ func NewAssetRepo(db *sql.DB) *AssetRepo {
 // ==========================
 // Create a new asset
 // ==========================
-func (r *AssetRepo) Create(name, description string) (*models.Asset, error) {
+func (r *AssetRepo) Create(name, description string, tags []string) (*models.Asset, error) {
+	if tags == nil {
+		tags = []string{}
+	}
 	var id int
 	err := r.db.QueryRow(
-		"INSERT INTO assets (name, description) VALUES ($1, $2) RETURNING id",
-		name, description,
+		"INSERT INTO assets (name, description, tags) VALUES ($1, $2, $3) RETURNING id",
+		name, description, pq.Array(tags),
 	).Scan(&id)
 	if err != nil {
 		return nil, err
@@ -39,6 +43,7 @@ func (r *AssetRepo) Create(name, description string) (*models.Asset, error) {
 		ID:          id,
 		Name:        name,
 		Description: description,
+		Tags:        tags,
 	}, nil
 }
 
@@ -49,9 +54,9 @@ func (r *AssetRepo) FindByName(name string) (*models.Asset, error) {
 	var a models.Asset
 	var lastSeen sql.NullTime
 	err := r.db.QueryRow(
-		"SELECT id, name, description, last_seen FROM assets WHERE name=$1",
+		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen FROM assets WHERE name=$1",
 		name,
-	).Scan(&a.ID, &a.Name, &a.Description, &lastSeen)
+	).Scan(&a.ID, &a.Name, &a.Description, pq.Array(&a.Tags), &lastSeen)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrAssetNotFound
@@ -74,7 +79,7 @@ func (r *AssetRepo) UpsertDiscovered(name, description string) (*models.Asset, e
 	if err == nil {
 		// Optionally update description if it has changed, but avoid errors
 		if a.Description != description {
-			updated, updateErr := r.Update(a.ID, a.Name, description)
+			updated, updateErr := r.Update(a.ID, a.Name, description, a.Tags)
 			if updateErr == nil {
 				return updated, nil
 			}
@@ -84,7 +89,7 @@ func (r *AssetRepo) UpsertDiscovered(name, description string) (*models.Asset, e
 
 	// If not found, create a new asset
 	if errors.Is(err, ErrAssetNotFound) {
-		return r.Create(name, description)
+		return r.Create(name, description, nil)
 	}
 
 	return nil, err
@@ -95,19 +100,35 @@ func (r *AssetRepo) UpsertDiscovered(name, description string) (*models.Asset, e
 // ==========================
 func (r *AssetRepo) List(limit, offset int) ([]models.Asset, error) {
 	rows, err := r.db.Query(
-		"SELECT id, name, description, last_seen FROM assets ORDER BY id LIMIT $1 OFFSET $2",
+		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen FROM assets ORDER BY id LIMIT $1 OFFSET $2",
 		limit, offset,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+	return r.scanAssetRows(rows)
+}
 
+// ListByTag returns assets that have the given tag.
+func (r *AssetRepo) ListByTag(tag string, limit, offset int) ([]models.Asset, error) {
+	rows, err := r.db.Query(
+		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen FROM assets WHERE $1 = ANY(COALESCE(tags, '{}')) ORDER BY id LIMIT $2 OFFSET $3",
+		tag, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return r.scanAssetRows(rows)
+}
+
+func (r *AssetRepo) scanAssetRows(rows *sql.Rows) ([]models.Asset, error) {
 	var assets []models.Asset
 	for rows.Next() {
 		var a models.Asset
 		var lastSeen sql.NullTime
-		if err := rows.Scan(&a.ID, &a.Name, &a.Description, &lastSeen); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.Description, pq.Array(&a.Tags), &lastSeen); err != nil {
 			return nil, err
 		}
 		if lastSeen.Valid {
@@ -115,8 +136,7 @@ func (r *AssetRepo) List(limit, offset int) ([]models.Asset, error) {
 		}
 		assets = append(assets, a)
 	}
-
-	return assets, nil
+	return assets, rows.Err()
 }
 
 // ==========================
@@ -125,28 +145,14 @@ func (r *AssetRepo) List(limit, offset int) ([]models.Asset, error) {
 func (r *AssetRepo) Search(query string, limit, offset int) ([]models.Asset, error) {
 	likeQuery := "%" + strings.ToLower(query) + "%"
 	rows, err := r.db.Query(
-		"SELECT id, name, description, last_seen FROM assets WHERE LOWER(name) LIKE $1 OR LOWER(description) LIKE $1 ORDER BY id LIMIT $2 OFFSET $3",
+		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen FROM assets WHERE LOWER(name) LIKE $1 OR LOWER(description) LIKE $1 ORDER BY id LIMIT $2 OFFSET $3",
 		likeQuery, limit, offset,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
-	var assets []models.Asset
-	for rows.Next() {
-		var a models.Asset
-		var lastSeen sql.NullTime
-		if err := rows.Scan(&a.ID, &a.Name, &a.Description, &lastSeen); err != nil {
-			return nil, err
-		}
-		if lastSeen.Valid {
-			a.LastSeen = &lastSeen.Time
-		}
-		assets = append(assets, a)
-	}
-
-	return assets, nil
+	return r.scanAssetRows(rows)
 }
 
 // ==========================
@@ -156,8 +162,8 @@ func (r *AssetRepo) Get(id int) (*models.Asset, error) {
 	var a models.Asset
 	var lastSeen sql.NullTime
 	err := r.db.QueryRow(
-		"SELECT id, name, description, last_seen FROM assets WHERE id=$1", id,
-	).Scan(&a.ID, &a.Name, &a.Description, &lastSeen)
+		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen FROM assets WHERE id=$1", id,
+	).Scan(&a.ID, &a.Name, &a.Description, pq.Array(&a.Tags), &lastSeen)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("asset not found")
@@ -191,10 +197,13 @@ func (r *AssetRepo) Heartbeat(id int) (*models.Asset, error) {
 // ==========================
 // Update an asset by ID
 // ==========================
-func (r *AssetRepo) Update(id int, name, description string) (*models.Asset, error) {
+func (r *AssetRepo) Update(id int, name, description string, tags []string) (*models.Asset, error) {
+	if tags == nil {
+		tags = []string{}
+	}
 	res, err := r.db.Exec(
-		"UPDATE assets SET name=$1, description=$2 WHERE id=$3",
-		name, description, id,
+		"UPDATE assets SET name=$1, description=$2, tags=$3 WHERE id=$4",
+		name, description, pq.Array(tags), id,
 	)
 	if err != nil {
 		return nil, err

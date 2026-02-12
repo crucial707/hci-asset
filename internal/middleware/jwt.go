@@ -12,6 +12,16 @@ type key string
 
 const UserIDKey key = "user_id"
 
+// GetUserID returns the user ID from the request context (set by JWTMiddleware). ok is false if not found.
+func GetUserID(ctx context.Context) (userID int, ok bool) {
+	v := ctx.Value(UserIDKey)
+	if v == nil {
+		return 0, false
+	}
+	id, ok := v.(int)
+	return id, ok
+}
+
 func JWTMiddleware(secret []byte) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

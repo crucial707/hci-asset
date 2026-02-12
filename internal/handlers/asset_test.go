@@ -13,6 +13,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/crucial707/hci-asset/internal/repo"
 	"github.com/go-chi/chi/v5"
+	"github.com/lib/pq"
 )
 
 // requestWithChiURLParams returns a request with chi route context and URL params set.
@@ -38,10 +39,10 @@ func TestAssetHandler_ListAssets(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, name, description, last_seen FROM assets ORDER BY id LIMIT \$1 OFFSET \$2`).
+	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen FROM assets ORDER BY id LIMIT \$1 OFFSET \$2`).
 		WithArgs(10, 0).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "last_seen"}).
-			AddRow(1, "asset1", "desc1", nil))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen"}).
+			AddRow(1, "asset1", "desc1", "{}", nil))
 
 	assetRepo := repo.NewAssetRepo(db)
 	h := &AssetHandler{Repo: assetRepo}
@@ -77,10 +78,10 @@ func TestAssetHandler_GetAsset(t *testing.T) {
 	defer db.Close()
 
 	now := time.Now()
-	mock.ExpectQuery(`SELECT id, name, description, last_seen FROM assets WHERE id=\$1`).
+	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen FROM assets WHERE id=\$1`).
 		WithArgs(1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "last_seen"}).
-			AddRow(1, "myasset", "mydesc", now))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen"}).
+			AddRow(1, "myasset", "mydesc", "{}", now))
 
 	assetRepo := repo.NewAssetRepo(db)
 	h := &AssetHandler{Repo: assetRepo}
@@ -115,7 +116,7 @@ func TestAssetHandler_GetAsset_NotFound(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, name, description, last_seen FROM assets WHERE id=\$1`).
+	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen FROM assets WHERE id=\$1`).
 		WithArgs(999).
 		WillReturnError(sql.ErrNoRows)
 
@@ -170,8 +171,8 @@ func TestAssetHandler_CreateAsset(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`INSERT INTO assets \(name, description\) VALUES \(\$1, \$2\) RETURNING id`).
-		WithArgs("newasset", "newdesc").
+	mock.ExpectQuery(`INSERT INTO assets \(name, description, tags\) VALUES \(\$1, \$2, \$3\) RETURNING id`).
+		WithArgs("newasset", "newdesc", pq.Array([]string{})).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(10))
 
 	assetRepo := repo.NewAssetRepo(db)

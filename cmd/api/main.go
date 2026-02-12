@@ -12,6 +12,7 @@ import (
 	"github.com/crucial707/hci-asset/internal/handlers"
 	"github.com/crucial707/hci-asset/internal/middleware"
 	"github.com/crucial707/hci-asset/internal/repo"
+	"github.com/crucial707/hci-asset/internal/scheduler"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -43,8 +44,37 @@ func main() {
 	if _, err := db.Exec("ALTER TABLE assets ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ NULL"); err != nil {
 		log.Printf("Warning: could not ensure last_seen on assets (table may not exist yet): %v", err)
 	}
+	// Ensure assets table has tags column (for asset tags feature)
+	if _, err := db.Exec("ALTER TABLE assets ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}'"); err != nil {
+		log.Printf("Warning: could not ensure tags on assets: %v", err)
+	}
 
-	r := newRouter(db, cfg)
+	// Ensure audit_log table exists (for audit log feature)
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS audit_log (
+		id SERIAL PRIMARY KEY,
+		user_id INT NOT NULL,
+		action VARCHAR(20) NOT NULL,
+		resource_type VARCHAR(20) NOT NULL,
+		resource_id INT NOT NULL,
+		details TEXT,
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	)`); err != nil {
+		log.Printf("Warning: could not ensure audit_log table: %v", err)
+	}
+
+	// Ensure scan_schedules table exists (for recurring scans)
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS scan_schedules (
+		id SERIAL PRIMARY KEY,
+		target TEXT NOT NULL,
+		cron_expr TEXT NOT NULL,
+		enabled BOOLEAN NOT NULL DEFAULT true,
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	)`); err != nil {
+		log.Printf("Warning: could not ensure scan_schedules table: %v", err)
+	}
+
+	r, scanHandler, scheduleRepo := newRouter(db, cfg)
+	go scheduler.Run(scheduleRepo, func(target string) { scanHandler.StartScanTarget(target) })
 
 	// ==========================
 	addr := ":" + cfg.Port
@@ -62,13 +92,18 @@ func main() {
 }
 
 // newRouter builds the HTTP router with handlers and middleware (used by main and tests).
-func newRouter(db *sql.DB, cfg config.Config) *chi.Mux {
+// Returns the router, ScanHandler (for scheduler), and ScheduleRepo (for scheduler).
+func newRouter(db *sql.DB, cfg config.Config) (*chi.Mux, *handlers.ScanHandler, *repo.ScheduleRepo) {
 	assetRepo := repo.NewAssetRepo(db)
 	userRepo := repo.NewUserRepo(db)
+	auditRepo := repo.NewAuditRepo(db)
+	scheduleRepo := repo.NewScheduleRepo(db)
 
-	assetHandler := &handlers.AssetHandler{Repo: assetRepo}
+	assetHandler := &handlers.AssetHandler{Repo: assetRepo, AuditRepo: auditRepo}
 	scanHandler := &handlers.ScanHandler{Repo: assetRepo, NmapPath: cfg.NmapPath}
-	userHandler := &handlers.UserHandler{Repo: userRepo}
+	userHandler := &handlers.UserHandler{Repo: userRepo, AuditRepo: auditRepo}
+	auditHandler := &handlers.AuditHandler{Repo: auditRepo}
+	scheduleHandler := &handlers.ScheduleHandler{Repo: scheduleRepo}
 	authHandler := &handlers.AuthHandler{
 		UserRepo: userRepo,
 		Secret:   []byte(cfg.JWTSecret),
@@ -109,6 +144,8 @@ func newRouter(db *sql.DB, cfg config.Config) *chi.Mux {
 	r.With(jwtMiddleware).Put("/users/{id}", userHandler.UpdateUser)
 	r.With(jwtMiddleware).Delete("/users/{id}", userHandler.DeleteUser)
 
+	r.With(jwtMiddleware).Get("/audit", auditHandler.ListAudit)
+
 	r.With(jwtMiddleware).Post("/scan", scanHandler.StartScan)
 	r.With(jwtMiddleware).Get("/scan/{id}", scanHandler.GetScanStatus)
 	r.With(jwtMiddleware).Post("/scan/{id}/cancel", scanHandler.CancelScan)
@@ -118,5 +155,11 @@ func newRouter(db *sql.DB, cfg config.Config) *chi.Mux {
 	r.With(jwtMiddleware).Get("/scans/{id}", scanHandler.GetScanStatus)
 	r.With(jwtMiddleware).Post("/scans/{id}/cancel", scanHandler.CancelScan)
 
-	return r
+	r.With(jwtMiddleware).Get("/schedules", scheduleHandler.ListSchedules)
+	r.With(jwtMiddleware).Post("/schedules", scheduleHandler.CreateSchedule)
+	r.With(jwtMiddleware).Get("/schedules/{id}", scheduleHandler.GetSchedule)
+	r.With(jwtMiddleware).Put("/schedules/{id}", scheduleHandler.UpdateSchedule)
+	r.With(jwtMiddleware).Delete("/schedules/{id}", scheduleHandler.DeleteSchedule)
+
+	return r, scanHandler, scheduleRepo
 }

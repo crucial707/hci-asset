@@ -102,6 +102,86 @@ The API does **not** run migrations automatically. When using **docker-compose**
 
 --------------------------------------------------------------------
 
+## API
+
+The API runs on port 8080 by default (configurable with `PORT`). All JSON request/response bodies use `Content-Type: application/json`.
+
+### Health and readiness
+
+| Method | Path    | Auth | Description |
+|--------|---------|------|-------------|
+| GET    | `/health` | No  | Liveness: returns `ok`. |
+| GET    | `/ready`  | No  | Readiness: pings Postgres; returns 200 `ok` or 503 `db unreachable`. |
+
+### Authentication
+
+The API uses **username-only** auth (no passwords). Obtain a JWT by registering and then logging in.
+
+1. **Register** (create a user):  
+   `POST /auth/register`  
+   Body: `{"username": "alice"}`  
+   Returns: `{"id": 1, "username": "alice"}` (or 200 with existing user if already registered).
+
+2. **Login**:  
+   `POST /auth/login`  
+   Body: `{"username": "alice"}`  
+   Returns: `{"token": "<jwt>", "user": {"id": 1, "username": "alice"}}`.
+
+3. **Use the token** on protected routes by sending the header:  
+   `Authorization: Bearer <token>`
+
+Auth endpoints are rate-limited per IP (10 requests/minute, burst 5); excess requests receive 429.
+
+### Protected endpoints (require `Authorization: Bearer <token>`)
+
+**Assets**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET    | `/assets` | List assets. Query: `limit`, `offset`, `search`. |
+| GET    | `/assets/{id}` | Get one asset. |
+| POST   | `/assets` | Create. Body: `{"name": "...", "description": "..."}`. |
+| PUT    | `/assets/{id}` | Update. Body: `{"name": "...", "description": "..."}`. |
+| POST   | `/assets/{id}/heartbeat` | Update `last_seen` (agent check-in). |
+| DELETE | `/assets/{id}` | Delete asset. |
+
+**Users**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET    | `/users` | List users. |
+| GET    | `/users/{id}` | Get one user. |
+| POST   | `/users` | Create. Body: `{"username": "..."}`. |
+| PUT    | `/users/{id}` | Update. Body: `{"username": "..."}`. |
+| DELETE | `/users/{id}` | Delete user. |
+
+**Scans**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET    | `/scans` | List recent scan jobs. |
+| POST   | `/scans` | Start scan. Body: `{"target": "192.168.1.0/24"}`. Returns `{"job_id": "1", "status": "running"}`. |
+| GET    | `/scans/{id}` | Get scan status and discovered assets. |
+| POST   | `/scans/{id}/cancel` | Cancel a running scan. |
+
+Legacy paths `POST /scan`, `GET /scan/{id}`, `POST /scan/{id}/cancel` behave the same as the `/scans` variants.
+
+**Scan schedules (recurring)**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET    | `/schedules` | List schedules. Query: `limit`, `offset`. |
+| POST   | `/schedules` | Create. Body: `{"target": "192.168.1.0/24", "cron_expr": "0 * * * *", "enabled": true}` (5-field cron: min hour day month weekday). |
+| GET    | `/schedules/{id}` | Get one schedule. |
+| PUT    | `/schedules/{id}` | Update. Body: `{"target": "...", "cron_expr": "...", "enabled": true}`. |
+| DELETE | `/schedules/{id}` | Delete schedule. |
+
+Enabled schedules are run by a background scheduler; each run starts an on-demand scan for that schedule’s target.
+
+Errors return JSON: `{"error": "message"}` with an appropriate HTTP status (400, 401, 404, 429, 500).
+
+--------------------------------------------------------------------
+
 ## CLI Usage
 
 The repository also includes a Go-based CLI for interacting with the API.
@@ -209,6 +289,33 @@ From the repo root:
   ```
 
 **CI**: A GitHub Actions workflow (`.github/workflows/ci.yml`) runs on push and pull requests to `main`/`master`: it checks out the repo, sets up Go from `go.mod`, runs `go build ./...` and `go test -v ./...`.
+
+### Local dev (quick start)
+
+1. **Start the stack** (from repo root):
+   ```bash
+   docker compose up -d
+   ```
+   This starts Postgres, the API (port 8080), and the Web UI (port 3000).
+
+2. **Create the database tables** (required once per environment). See [Database setup (PostgreSQL)](#database-setup-postgresql) for details. With Docker Compose and container name `asset-postgres`:
+   ```bash
+   # Users table (username-only auth)
+   docker exec -i asset-postgres psql -U assetuser -d assetdb -c "CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username VARCHAR(255) NOT NULL UNIQUE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());"
+
+   # Assets table (create via your migrations in internal/db/migrations/ if you have them, or ensure the table exists with id, name, description; the API adds last_seen on startup)
+   ```
+   If the API logs "users table missing", run the users command above, then restart the API (e.g. `docker compose restart api`).
+
+3. **Run tests** (no Docker required; uses mocks):
+   ```bash
+   go test ./...
+   ```
+   For only repo or handler tests, see the commands above under *Running tests*.
+
+4. **Optional – run API or Web locally** (with Go, against the same Postgres):
+   - API: set `DB_HOST=localhost` (and DB_PORT/DB_NAME/DB_USER/DB_PASS to match your Postgres), then `go run ./cmd/api`.
+   - Web: `go run ./cmd/web` (defaults to API at `http://localhost:8080`).
 
 --------------------------------------------------------------------
 

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/crucial707/hci-asset/internal/middleware"
 	"github.com/crucial707/hci-asset/internal/repo"
 	"github.com/go-chi/chi/v5"
 )
@@ -13,7 +14,8 @@ import (
 // UserHandler
 // ==========================
 type UserHandler struct {
-	Repo *repo.UserRepo
+	Repo      *repo.UserRepo
+	AuditRepo *repo.AuditRepo
 }
 
 // ==========================
@@ -33,6 +35,12 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		JSONError(w, "failed to create user", http.StatusInternalServerError)
 		return
+	}
+
+	if h.AuditRepo != nil {
+		if userID, ok := middleware.GetUserID(r.Context()); ok {
+			_ = h.AuditRepo.Log(userID, "create", "user", user.ID, "")
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -100,6 +108,12 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.AuditRepo != nil {
+		if userID, ok := middleware.GetUserID(r.Context()); ok {
+			_ = h.AuditRepo.Log(userID, "update", "user", id, "")
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(user)
 }
@@ -118,6 +132,12 @@ func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	if err := h.Repo.Delete(id); err != nil {
 		JSONError(w, "failed to delete user", http.StatusInternalServerError)
 		return
+	}
+
+	if h.AuditRepo != nil {
+		if userID, ok := middleware.GetUserID(r.Context()); ok {
+			_ = h.AuditRepo.Log(userID, "delete", "user", id, "")
+		}
 	}
 
 	w.WriteHeader(http.StatusNoContent)
