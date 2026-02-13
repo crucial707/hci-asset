@@ -147,8 +147,14 @@ func loginSubmit(apiBase string) http.HandlerFunc {
 			renderTemplate(w, "login.html", map[string]string{"Error": "Username is required"})
 			return
 		}
+		password := r.FormValue("password")
 
-		body := fmt.Sprintf(`{"username":%q}`, username)
+		var body string
+		if password != "" {
+			body = fmt.Sprintf(`{"username":%q,"password":%q}`, username, password)
+		} else {
+			body = fmt.Sprintf(`{"username":%q}`, username)
+		}
 		req, _ := http.NewRequest("POST", apiBase+"/auth/login", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 

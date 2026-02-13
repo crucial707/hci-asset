@@ -31,7 +31,7 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.Repo.Create(input.Username)
+	user, err := h.Repo.Create(input.Username, "")
 	if err != nil {
 		JSONError(w, "failed to create user", http.StatusInternalServerError)
 		return

@@ -85,7 +85,7 @@ When using **docker-compose**, Postgres is created with database `assetdb`, user
 
 - **Skip migrations**: Set env `SKIP_MIGRATIONS=1` if you run migrations separately (e.g. from a job or CLI). The API will then assume the schema is already up to date.
 - **Existing installs**: If you previously created tables manually (before this migration runner), back up your data before starting the API with migrations enabled, or set `SKIP_MIGRATIONS=1` until you are ready.
-- **Auth**: The API uses **username-only** auth (no passwords). The `users` table has no password column.
+- **Auth**: The API supports **username-only** or **optional password** auth. The `users` table has an optional `password_hash` column; if set, login requires the password.
 
 --------------------------------------------------------------------
 
@@ -102,16 +102,16 @@ The API runs on port 8080 by default (configurable with `PORT`). All JSON reques
 
 ### Authentication
 
-The API uses **username-only** auth (no passwords). Obtain a JWT by registering and then logging in.
+Obtain a JWT by registering and then logging in. Passwords are **optional**: if a user has no password set, username-only login works; if a password is set (at register or later), login requires it.
 
 1. **Register** (create a user):  
    `POST /auth/register`  
-   Body: `{"username": "alice"}`  
+   Body: `{"username": "alice"}` or `{"username": "alice", "password": "secret"}` (password optional).  
    Returns: `{"id": 1, "username": "alice"}` (or 200 with existing user if already registered).
 
 2. **Login**:  
    `POST /auth/login`  
-   Body: `{"username": "alice"}`  
+   Body: `{"username": "alice"}` or `{"username": "alice", "password": "secret"}` (required when the account has a password).  
    Returns: `{"token": "<jwt>", "user": {"id": 1, "username": "alice"}}`.
 
 3. **Use the token** on protected routes by sending the header:  

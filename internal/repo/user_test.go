@@ -14,12 +14,12 @@ func TestUserRepo_Create(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`INSERT INTO users \(username\)`).
-		WithArgs("alice").
+	mock.ExpectQuery(`INSERT INTO users \(username, password_hash\)`).
+		WithArgs("alice", nil).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username"}).AddRow(1, "alice"))
 
 	repo := NewUserRepo(db)
-	user, err := repo.Create("alice")
+	user, err := repo.Create("alice", "")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -38,9 +38,9 @@ func TestUserRepo_GetByID(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, username`).
+	mock.ExpectQuery(`SELECT id, username, password_hash`).
 		WithArgs(1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "username"}).AddRow(1, "bob"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash"}).AddRow(1, "bob", nil))
 
 	repo := NewUserRepo(db)
 	user, err := repo.GetByID(1)
@@ -62,7 +62,7 @@ func TestUserRepo_GetByID_NotFound(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, username`).
+	mock.ExpectQuery(`SELECT id, username, password_hash`).
 		WithArgs(999).
 		WillReturnError(sql.ErrNoRows)
 
@@ -86,9 +86,9 @@ func TestUserRepo_GetByUsername(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, username`).
+	mock.ExpectQuery(`SELECT id, username, password_hash`).
 		WithArgs("charlie").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "username"}).AddRow(2, "charlie"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash"}).AddRow(2, "charlie", nil))
 
 	repo := NewUserRepo(db)
 	user, err := repo.GetByUsername("charlie")

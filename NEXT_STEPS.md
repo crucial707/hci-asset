@@ -54,5 +54,5 @@ Priorities below are optional; pick by impact and effort.
 
 ### Product and security
 
-- [ ] **Password auth (optional)** – Add optional password-based login alongside or instead of username-only, with secure hashing (e.g. bcrypt).
+- [x] **Password auth (optional)** – Optional password on register/login; bcrypt hashing; users without a password use username-only login. Web login form includes password field; API and README updated.
 - [ ] **RBAC or roles** – Restrict who can manage users, delete assets, or manage schedules (e.g. admin vs viewer).

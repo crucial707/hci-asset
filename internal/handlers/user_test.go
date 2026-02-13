@@ -19,8 +19,8 @@ func TestUserHandler_CreateUser(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`INSERT INTO users \(username\)`).
-		WithArgs("charlie").
+	mock.ExpectQuery(`INSERT INTO users \(username, password_hash\)`).
+		WithArgs("charlie", nil).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username"}).AddRow(3, "charlie"))
 
 	userRepo := repo.NewUserRepo(db)
@@ -81,10 +81,10 @@ func TestUserHandler_ListUsers(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, username FROM users ORDER BY id`).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "username"}).
-			AddRow(1, "alice").
-			AddRow(2, "bob"))
+	mock.ExpectQuery(`SELECT id, username, password_hash FROM users ORDER BY id`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash"}).
+			AddRow(1, "alice", nil).
+			AddRow(2, "bob", nil))
 
 	userRepo := repo.NewUserRepo(db)
 	h := &UserHandler{Repo: userRepo}
@@ -118,9 +118,9 @@ func TestUserHandler_GetUser(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, username`).
+	mock.ExpectQuery(`SELECT id, username, password_hash`).
 		WithArgs(1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "username"}).AddRow(1, "alice"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash"}).AddRow(1, "alice", nil))
 
 	userRepo := repo.NewUserRepo(db)
 	h := &UserHandler{Repo: userRepo}
@@ -154,7 +154,7 @@ func TestUserHandler_GetUser_NotFound(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, username`).
+	mock.ExpectQuery(`SELECT id, username, password_hash`).
 		WithArgs(999).
 		WillReturnError(sql.ErrNoRows)
 
@@ -204,7 +204,7 @@ func TestUserHandler_UpdateUser(t *testing.T) {
 
 	mock.ExpectQuery(`UPDATE users`).
 		WithArgs("alice2", 1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "username"}).AddRow(1, "alice2"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash"}).AddRow(1, "alice2", nil))
 
 	userRepo := repo.NewUserRepo(db)
 	h := &UserHandler{Repo: userRepo}
