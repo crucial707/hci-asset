@@ -45,7 +45,7 @@ Priorities below are optional; pick by impact and effort.
 ### Reliability and operations
 
 - [x] **Persist scan jobs** – Scan jobs stored in `scan_jobs` table (id, target, status, started_at, completed_at, error, assets JSONB). List/Get read from DB; running jobs kept in memory for cancel; runScan persists on completion/cancel/error. History survives API restarts.
-- [ ] **Formal migrations** – Use a migration runner (e.g. golang-migrate) so all schema changes live in `internal/db/migrations/` and are applied on startup or via a CLI step, instead of ad-hoc `CREATE TABLE IF NOT EXISTS` in main.
+- [x] **Formal migrations** – golang-migrate in `internal/db/migrate.go`; migrations embedded from `internal/db/migrations/`; API runs `db.Run(dsn)` on startup (set `SKIP_MIGRATIONS=1` to skip). All schema lives in migrations; ad-hoc ensures removed from main.
 
 ### Testing and quality
 

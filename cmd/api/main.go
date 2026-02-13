@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	_ "github.com/lib/pq"
 
 	"github.com/crucial707/hci-asset/internal/config"
+	"github.com/crucial707/hci-asset/internal/db"
 	"github.com/crucial707/hci-asset/internal/handlers"
 	"github.com/crucial707/hci-asset/internal/middleware"
 	"github.com/crucial707/hci-asset/internal/repo"
@@ -23,70 +25,25 @@ func main() {
 	// Connect to Postgres (config from env: DB_HOST, DB_PORT, etc.; defaults match local docker-compose)
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		cfg.DBUser, cfg.DBPass, cfg.DBHost, cfg.DBPort, cfg.DBName)
-	db, err := sql.Open("postgres", dsn)
+	dbConn, err := sql.Open("postgres", dsn)
 	if err != nil {
 		log.Fatal("DB open:", err)
 	}
-	defer db.Close()
+	defer dbConn.Close()
 
-	if err := db.Ping(); err != nil {
+	if err := dbConn.Ping(); err != nil {
 		log.Fatalf("DB ping failed (host=%s port=%s): %v", cfg.DBHost, cfg.DBPort, err)
 	}
 
-	// Ensure users table exists (migrations are not run automatically)
-	if _, err := db.Exec("SELECT 1 FROM users LIMIT 0"); err != nil {
-		log.Fatalf("users table missing. Create it in your Postgres (e.g. Docker container asset-postgres) with: "+
-			"docker exec -i asset-postgres psql -U assetuser -d assetdb -c \"CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username VARCHAR(255) NOT NULL UNIQUE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());\" "+
-			"Error: %v", err)
+	// Run migrations from internal/db/migrations/ unless SKIP_MIGRATIONS is set
+	if os.Getenv("SKIP_MIGRATIONS") == "" {
+		if err := db.Run(dsn); err != nil {
+			log.Fatalf("migrations: %v", err)
+		}
+		log.Printf("migrations: up to date")
 	}
 
-	// Ensure assets table has last_seen column (idempotent; safe if column already exists or table missing)
-	if _, err := db.Exec("ALTER TABLE assets ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ NULL"); err != nil {
-		log.Printf("Warning: could not ensure last_seen on assets (table may not exist yet): %v", err)
-	}
-	// Ensure assets table has tags column (for asset tags feature)
-	if _, err := db.Exec("ALTER TABLE assets ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}'"); err != nil {
-		log.Printf("Warning: could not ensure tags on assets: %v", err)
-	}
-
-	// Ensure audit_log table exists (for audit log feature)
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS audit_log (
-		id SERIAL PRIMARY KEY,
-		user_id INT NOT NULL,
-		action VARCHAR(20) NOT NULL,
-		resource_type VARCHAR(20) NOT NULL,
-		resource_id INT NOT NULL,
-		details TEXT,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	)`); err != nil {
-		log.Printf("Warning: could not ensure audit_log table: %v", err)
-	}
-
-	// Ensure scan_schedules table exists (for recurring scans)
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS scan_schedules (
-		id SERIAL PRIMARY KEY,
-		target TEXT NOT NULL,
-		cron_expr TEXT NOT NULL,
-		enabled BOOLEAN NOT NULL DEFAULT true,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	)`); err != nil {
-		log.Printf("Warning: could not ensure scan_schedules table: %v", err)
-	}
-
-	// Ensure scan_jobs table exists (persisted scan history)
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS scan_jobs (
-		id SERIAL PRIMARY KEY,
-		target TEXT NOT NULL,
-		status VARCHAR(20) NOT NULL DEFAULT 'running',
-		started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		completed_at TIMESTAMPTZ NULL,
-		error TEXT NULL,
-		assets JSONB NULL
-	)`); err != nil {
-		log.Printf("Warning: could not ensure scan_jobs table: %v", err)
-	}
-
-	r, scanHandler, scheduleRepo := newRouter(db, cfg)
+	r, scanHandler, scheduleRepo := newRouter(dbConn, cfg)
 	go scheduler.Run(scheduleRepo, func(target string) { scanHandler.StartScanTarget(target) })
 
 	// ==========================
