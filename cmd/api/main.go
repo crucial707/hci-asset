@@ -73,6 +73,19 @@ func main() {
 		log.Printf("Warning: could not ensure scan_schedules table: %v", err)
 	}
 
+	// Ensure scan_jobs table exists (persisted scan history)
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS scan_jobs (
+		id SERIAL PRIMARY KEY,
+		target TEXT NOT NULL,
+		status VARCHAR(20) NOT NULL DEFAULT 'running',
+		started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		completed_at TIMESTAMPTZ NULL,
+		error TEXT NULL,
+		assets JSONB NULL
+	)`); err != nil {
+		log.Printf("Warning: could not ensure scan_jobs table: %v", err)
+	}
+
 	r, scanHandler, scheduleRepo := newRouter(db, cfg)
 	go scheduler.Run(scheduleRepo, func(target string) { scanHandler.StartScanTarget(target) })
 
@@ -98,9 +111,10 @@ func newRouter(db *sql.DB, cfg config.Config) (*chi.Mux, *handlers.ScanHandler, 
 	userRepo := repo.NewUserRepo(db)
 	auditRepo := repo.NewAuditRepo(db)
 	scheduleRepo := repo.NewScheduleRepo(db)
+	scanJobRepo := repo.NewScanJobRepo(db)
 
 	assetHandler := &handlers.AssetHandler{Repo: assetRepo, AuditRepo: auditRepo}
-	scanHandler := &handlers.ScanHandler{Repo: assetRepo, NmapPath: cfg.NmapPath}
+	scanHandler := &handlers.ScanHandler{Repo: assetRepo, ScanJobRepo: scanJobRepo, NmapPath: cfg.NmapPath}
 	userHandler := &handlers.UserHandler{Repo: userRepo, AuditRepo: auditRepo}
 	auditHandler := &handlers.AuditHandler{Repo: auditRepo}
 	scheduleHandler := &handlers.ScheduleHandler{Repo: scheduleRepo}

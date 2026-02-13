@@ -769,7 +769,7 @@ func scanPage(apiBase string) http.HandlerFunc {
 		}
 
 		var scans []struct {
-			ID        string `json:"id"`
+			ID        int    `json:"id"`
 			Target    string `json:"target"`
 			Status    string `json:"status"`
 			StartedAt string `json:"started_at"`

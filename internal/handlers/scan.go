@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"os/exec"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,8 +33,9 @@ type ScanJob struct {
 // ==========================
 type ScanHandler struct {
 	Repo       *repo.AssetRepo
+	ScanJobRepo *repo.ScanJobRepo
 	NmapPath   string // path to nmap executable (e.g. "nmap" or "C:\\Program Files (x86)\\Nmap\\nmap.exe")
-	scanJobs   map[string]*ScanJob
+	scanJobs   map[string]*ScanJob // in-memory only for running jobs (for cancel channel)
 	scanJobsMu sync.Mutex
 }
 
@@ -60,18 +60,32 @@ func (h *ScanHandler) StartScan(w http.ResponseWriter, r *http.Request) {
 }
 
 // StartScanTarget starts a scan for the given target and returns the job ID.
-// Used by the API (StartScan) and by the schedule runner.
+// Used by the API (StartScan) and by the schedule runner. Persists the job to DB.
 func (h *ScanHandler) StartScanTarget(target string) string {
-	h.scanJobsMu.Lock()
-	if h.scanJobs == nil {
-		h.scanJobs = make(map[string]*ScanJob)
+	id, err := h.ScanJobRepo.Create(target)
+	if err != nil {
+		// Fallback to in-memory-only id if DB fails (e.g. table missing)
+		h.scanJobsMu.Lock()
+		if h.scanJobs == nil {
+			h.scanJobs = make(map[string]*ScanJob)
+		}
+		jobID := strconv.Itoa(len(h.scanJobs)+1) + "-mem"
+		job := &ScanJob{Target: target, Status: "running", StartedAt: time.Now(), cancel: make(chan struct{})}
+		h.scanJobs[jobID] = job
+		h.scanJobsMu.Unlock()
+		go h.runScan(jobID, target, job.cancel)
+		return jobID
 	}
-	jobID := strconv.Itoa(len(h.scanJobs) + 1)
+	jobID := strconv.Itoa(id)
 	job := &ScanJob{
 		Target:    target,
 		Status:    "running",
 		StartedAt: time.Now(),
 		cancel:    make(chan struct{}),
+	}
+	h.scanJobsMu.Lock()
+	if h.scanJobs == nil {
+		h.scanJobs = make(map[string]*ScanJob)
 	}
 	h.scanJobs[jobID] = job
 	h.scanJobsMu.Unlock()
@@ -81,72 +95,62 @@ func (h *ScanHandler) StartScanTarget(target string) string {
 }
 
 // ==========================
-// List Scans (recent job IDs with target, status, started_at)
+// List Scans (recent job IDs with target, status, started_at) from DB.
 // ==========================
 func (h *ScanHandler) ListScans(w http.ResponseWriter, r *http.Request) {
-	h.scanJobsMu.Lock()
-	defer h.scanJobsMu.Unlock()
-
-	type jobSummary struct {
-		ID        string    `json:"id"`
-		Target    string    `json:"target"`
-		Status    string    `json:"status"`
-		StartedAt time.Time `json:"started_at"`
-	}
-
-	var ids []int
-	for id := range h.scanJobs {
-		n, err := strconv.Atoi(id)
-		if err != nil {
-			continue
-		}
-		ids = append(ids, n)
-	}
-	sort.Sort(sort.Reverse(sort.IntSlice(ids)))
-
 	const maxRecent = 20
-	var list []jobSummary
-	for i, n := range ids {
-		if i >= maxRecent {
-			break
-		}
-		idStr := strconv.Itoa(n)
-		job, ok := h.scanJobs[idStr]
-		if !ok {
-			continue
-		}
-		list = append(list, jobSummary{
-			ID:        idStr,
-			Target:    job.Target,
-			Status:    job.Status,
-			StartedAt: job.StartedAt,
-		})
+	list, err := h.ScanJobRepo.List(maxRecent, 0)
+	if err != nil {
+		JSONError(w, "failed to list scans", http.StatusInternalServerError)
+		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(list)
 }
 
 // ==========================
-// Get Scan Status
+// Get Scan Status (from memory if running, else from DB).
 // ==========================
 func (h *ScanHandler) GetScanStatus(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "id")
 	h.scanJobsMu.Lock()
-	job, exists := h.scanJobs[jobID]
+	job, inMem := h.scanJobs[jobID]
 	h.scanJobsMu.Unlock()
 
-	if !exists {
-		JSONError(w, "scan job not found", http.StatusNotFound)
+	if inMem {
+		// Return in-memory job with id for consistency
+		out := map[string]interface{}{
+			"id":         jobID,
+			"target":    job.Target,
+			"status":    job.Status,
+			"started_at": job.StartedAt,
+			"assets":    job.Assets,
+			"error":     job.Error,
+		}
+		if job.CompletedAt != nil {
+			out["completed_at"] = job.CompletedAt
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(out)
 		return
 	}
 
+	id, err := strconv.Atoi(jobID)
+	if err != nil {
+		JSONError(w, "scan job not found", http.StatusNotFound)
+		return
+	}
+	row, err := h.ScanJobRepo.GetByID(id)
+	if err != nil || row == nil {
+		JSONError(w, "scan job not found", http.StatusNotFound)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(job)
+	json.NewEncoder(w).Encode(row)
 }
 
 // ==========================
-// Cancel Scan
+// Cancel Scan (only works for running jobs in memory).
 // ==========================
 func (h *ScanHandler) CancelScan(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "id")
@@ -155,7 +159,7 @@ func (h *ScanHandler) CancelScan(w http.ResponseWriter, r *http.Request) {
 	h.scanJobsMu.Unlock()
 
 	if !exists {
-		JSONError(w, "scan job not found", http.StatusNotFound)
+		JSONError(w, "scan job not found or not running", http.StatusNotFound)
 		return
 	}
 
@@ -167,16 +171,28 @@ func (h *ScanHandler) CancelScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(job)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id": jobID, "target": job.Target, "status": job.Status,
+		"started_at": job.StartedAt, "completed_at": job.CompletedAt,
+		"assets": job.Assets, "error": job.Error,
+	})
 }
 
 // ==========================
-// Internal Scan Executor
+// Internal Scan Executor (persists result to DB when jobID is numeric).
 // ==========================
 func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 	h.scanJobsMu.Lock()
 	job := h.scanJobs[jobID]
 	h.scanJobsMu.Unlock()
+
+	persist := func() {
+		id, err := strconv.Atoi(jobID)
+		if err != nil {
+			return // fallback in-memory job (e.g. "3-mem"), skip persist
+		}
+		_ = h.ScanJobRepo.Update(id, job.Status, job.CompletedAt, job.Error, job.Assets)
+	}
 
 	nmapExe := h.NmapPath
 	if nmapExe == "" {
@@ -189,6 +205,7 @@ func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 	if err != nil {
 		job.Status = "error"
 		job.Error = err.Error()
+		persist()
 		return
 	}
 
@@ -203,6 +220,7 @@ func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 			done := time.Now()
 			job.CompletedAt = &done
 			job.Status = "canceled"
+			persist()
 			return
 		default:
 		}
@@ -228,16 +246,13 @@ func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 
 			asset, err := h.Repo.UpsertDiscovered(displayName, desc)
 			if err != nil {
-				// Best-effort: log in job error but continue scanning others
 				if job.Error == "" {
 					job.Error = "one or more assets failed to upsert"
 				}
 				continue
 			}
 
-			// Attach network info in-memory for the response
 			asset.NetworkName = ip
-
 			discovered = append(discovered, *asset)
 		}
 	}
@@ -248,4 +263,5 @@ func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 		job.CompletedAt = &done
 		job.Status = "complete"
 	}
+	persist()
 }
