@@ -49,8 +49,8 @@ Priorities below are optional; pick by impact and effort.
 
 ### Testing and quality
 
-- [ ] **Schedule handler tests** – Unit tests for `ScheduleHandler` (List, Get, Create, Update, Delete) with httptest and repo mocks.
-- [ ] **Schedule repo tests** – `internal/repo/schedule_test.go` with sqlmock for List, ListEnabled, GetByID, Create, Update, Delete.
+- [x] **Schedule handler tests** – `internal/handlers/schedule_test.go`: ListSchedules, ListSchedules with query params, GetSchedule, GetSchedule NotFound/InvalidID, CreateSchedule, CreateSchedule BadRequest, UpdateSchedule, UpdateSchedule InvalidID, DeleteSchedule, DeleteSchedule InvalidID (httptest + sqlmock).
+- [x] **Schedule repo tests** – `internal/repo/schedule_test.go`: List, List empty, ListEnabled, GetByID, GetByID NotFound, Create, Update, Delete (sqlmock).
 
 ### Product and security
 
