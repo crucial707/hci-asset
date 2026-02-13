@@ -14,16 +14,16 @@ func TestUserRepo_Create(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`INSERT INTO users \(username, password_hash\)`).
-		WithArgs("alice", nil).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "username"}).AddRow(1, "alice"))
+	mock.ExpectQuery(`INSERT INTO users \(username, password_hash, role\)`).
+		WithArgs("alice", nil, "viewer").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}).AddRow(1, "alice", "viewer"))
 
 	repo := NewUserRepo(db)
-	user, err := repo.Create("alice", "")
+	user, err := repo.Create("alice", "", "viewer")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if user.ID != 1 || user.Username != "alice" {
+	if user.ID != 1 || user.Username != "alice" || user.Role != "viewer" {
 		t.Errorf("unexpected user: %+v", user)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -38,9 +38,9 @@ func TestUserRepo_GetByID(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, username, password_hash`).
+	mock.ExpectQuery(`SELECT id, username, password_hash, role`).
 		WithArgs(1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash"}).AddRow(1, "bob", nil))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role"}).AddRow(1, "bob", nil, "viewer"))
 
 	repo := NewUserRepo(db)
 	user, err := repo.GetByID(1)
@@ -62,7 +62,7 @@ func TestUserRepo_GetByID_NotFound(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, username, password_hash`).
+	mock.ExpectQuery(`SELECT id, username, password_hash, role`).
 		WithArgs(999).
 		WillReturnError(sql.ErrNoRows)
 
@@ -86,9 +86,9 @@ func TestUserRepo_GetByUsername(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, username, password_hash`).
+	mock.ExpectQuery(`SELECT id, username, password_hash, role`).
 		WithArgs("charlie").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash"}).AddRow(2, "charlie", nil))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role"}).AddRow(2, "charlie", nil, "viewer"))
 
 	repo := NewUserRepo(db)
 	user, err := repo.GetByUsername("charlie")

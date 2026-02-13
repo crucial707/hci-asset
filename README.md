@@ -85,7 +85,7 @@ When using **docker-compose**, Postgres is created with database `assetdb`, user
 
 - **Skip migrations**: Set env `SKIP_MIGRATIONS=1` if you run migrations separately (e.g. from a job or CLI). The API will then assume the schema is already up to date.
 - **Existing installs**: If you previously created tables manually (before this migration runner), back up your data before starting the API with migrations enabled, or set `SKIP_MIGRATIONS=1` until you are ready.
-- **Auth**: The API supports **username-only** or **optional password** auth. The `users` table has an optional `password_hash` column; if set, login requires the password.
+- **Auth**: Users have a `role` (`viewer` or `admin`). Only **viewer** can log in without a password; **admin** requires a password. The `users` table has `role` and optional `password_hash`.
 
 --------------------------------------------------------------------
 
@@ -100,24 +100,27 @@ The API runs on port 8080 by default (configurable with `PORT`). All JSON reques
 | GET    | `/health` | No  | Liveness: returns `ok`. |
 | GET    | `/ready`  | No  | Readiness: pings Postgres; returns 200 `ok` or 503 `db unreachable`. |
 
-### Authentication
+### Authentication and roles
 
-Obtain a JWT by registering and then logging in. Passwords are **optional**: if a user has no password set, username-only login works; if a password is set (at register or later), login requires it.
+Users have a **role**: `viewer` (view only) or `admin`. Obtain a JWT by registering and then logging in.
+
+- **Viewer**: Can log in with **username only** (no password). Can only read: list/get assets, users, audit log, scans, schedules. Create/update/delete return 403 Forbidden.
+- **Admin**: **Must have a password** (required at register and at login). Can do everything (create, update, delete assets, users, schedules; run/cancel scans; heartbeat).
 
 1. **Register** (create a user):  
    `POST /auth/register`  
-   Body: `{"username": "alice"}` or `{"username": "alice", "password": "secret"}` (password optional).  
-   Returns: `{"id": 1, "username": "alice"}` (or 200 with existing user if already registered).
+   Body: `{"username": "alice"}` (viewer, no password) or `{"username": "alice", "password": "secret", "role": "admin"}` (admin requires password).  
+   Default role is `viewer`. Returns: `{"id": 1, "username": "alice", "role": "viewer"}` (or 200 with existing user if already registered).
 
 2. **Login**:  
    `POST /auth/login`  
-   Body: `{"username": "alice"}` or `{"username": "alice", "password": "secret"}` (required when the account has a password).  
-   Returns: `{"token": "<jwt>", "user": {"id": 1, "username": "alice"}}`.
+   Body: `{"username": "alice"}` for viewer (no password), or `{"username": "alice", "password": "secret"}` when the account has a password (required for admin).  
+   Returns: `{"token": "<jwt>", "user": {"id": 1, "username": "alice", "role": "viewer"}}`.
 
 3. **Use the token** on protected routes by sending the header:  
    `Authorization: Bearer <token>`
 
-Auth endpoints are rate-limited per IP (10 requests/minute, burst 5); excess requests receive 429.
+Auth endpoints are rate-limited per IP (10 requests/minute, burst 5); excess requests receive 429. Mutating operations (POST/PUT/DELETE on assets, users, schedules; scan start/cancel; heartbeat) require **admin**; viewers receive 403.
 
 ### Protected endpoints (require `Authorization: Bearer <token>`)
 

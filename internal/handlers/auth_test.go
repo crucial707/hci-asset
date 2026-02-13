@@ -20,9 +20,9 @@ func TestAuthHandler_Login(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, username, password_hash`).
+	mock.ExpectQuery(`SELECT id, username, password_hash, role`).
 		WithArgs("alice").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash"}).AddRow(1, "alice", nil))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role"}).AddRow(1, "alice", nil, "viewer"))
 
 	userRepo := repo.NewUserRepo(db)
 	h := &AuthHandler{UserRepo: userRepo, Secret: []byte("test-secret")}
@@ -61,7 +61,7 @@ func TestAuthHandler_Login_InvalidCredentials(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, username, password_hash`).
+	mock.ExpectQuery(`SELECT id, username, password_hash, role`).
 		WithArgs("nobody").
 		WillReturnError(sql.ErrNoRows)
 
@@ -100,9 +100,9 @@ func TestAuthHandler_Login_WithPassword_Success(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, username, password_hash`).
+	mock.ExpectQuery(`SELECT id, username, password_hash, role`).
 		WithArgs("alice").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash"}).AddRow(1, "alice", string(hash)))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role"}).AddRow(1, "alice", string(hash), "admin"))
 
 	userRepo := repo.NewUserRepo(db)
 	h := &AuthHandler{UserRepo: userRepo, Secret: []byte("test-secret")}
@@ -145,9 +145,9 @@ func TestAuthHandler_Login_WithPassword_WrongPassword(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, username, password_hash`).
+	mock.ExpectQuery(`SELECT id, username, password_hash, role`).
 		WithArgs("alice").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash"}).AddRow(1, "alice", string(hash)))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role"}).AddRow(1, "alice", string(hash), "admin"))
 
 	userRepo := repo.NewUserRepo(db)
 	h := &AuthHandler{UserRepo: userRepo, Secret: []byte("test-secret")}
@@ -167,6 +167,58 @@ func TestAuthHandler_Login_WithPassword_WrongPassword(t *testing.T) {
 	}
 	if out["error"] != "invalid credentials" {
 		t.Errorf("unexpected error: %v", out["error"])
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("expectations: %v", err)
+	}
+}
+
+func TestAuthHandler_Login_AdminWithoutPassword_Unauthorized(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+
+	mock.ExpectQuery(`SELECT id, username, password_hash, role`).
+		WithArgs("admin").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role"}).AddRow(1, "admin", nil, "admin"))
+
+	userRepo := repo.NewUserRepo(db)
+	h := &AuthHandler{UserRepo: userRepo, Secret: []byte("test-secret")}
+
+	body, _ := json.Marshal(map[string]string{"username": "admin"})
+	req := httptest.NewRequest("POST", "/auth/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	h.Login(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("Login status: got %d, want 401 (admin requires password)", rr.Code)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("expectations: %v", err)
+	}
+}
+
+func TestAuthHandler_Register_AdminWithoutPassword_BadRequest(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+
+	userRepo := repo.NewUserRepo(db)
+	h := &AuthHandler{UserRepo: userRepo, Secret: []byte("test-secret")}
+
+	body, _ := json.Marshal(map[string]string{"username": "admin", "role": "admin"})
+	req := httptest.NewRequest("POST", "/auth/register", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	h.Register(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("Register status: got %d, want 400 (password required for admin)", rr.Code)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("expectations: %v", err)
@@ -203,9 +255,9 @@ func TestAuthHandler_Register(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`INSERT INTO users \(username, password_hash\)`).
-		WithArgs("bob", nil).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "username"}).AddRow(2, "bob"))
+	mock.ExpectQuery(`INSERT INTO users \(username, password_hash, role\)`).
+		WithArgs("bob", nil, "viewer").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}).AddRow(2, "bob", "viewer"))
 
 	userRepo := repo.NewUserRepo(db)
 	h := &AuthHandler{UserRepo: userRepo, Secret: []byte("test-secret")}

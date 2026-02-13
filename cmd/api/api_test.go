@@ -21,9 +21,9 @@ func TestAPI_LoginThenListAssets(t *testing.T) {
 	defer db.Close()
 
 	// Login: GetByUsername("integration")
-	mock.ExpectQuery(`SELECT id, username, password_hash`).
+	mock.ExpectQuery(`SELECT id, username, password_hash, role`).
 		WithArgs("integration").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash"}).AddRow(1, "integration", nil))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role"}).AddRow(1, "integration", nil, "viewer"))
 
 	// GET /assets: List(10, 0) default limit/offset
 	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen FROM assets ORDER BY id LIMIT \$1 OFFSET \$2`).

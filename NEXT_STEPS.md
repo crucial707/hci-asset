@@ -55,4 +55,4 @@ Priorities below are optional; pick by impact and effort.
 ### Product and security
 
 - [x] **Password auth (optional)** – Optional password on register/login; bcrypt hashing; users without a password use username-only login. Web login form includes password field; API and README updated.
-- [ ] **RBAC or roles** – Restrict who can manage users, delete assets, or manage schedules (e.g. admin vs viewer).
+- [x] **RBAC or roles** – Roles `viewer` (view only) and `admin`. Only viewer can log in without a password; admin requires password at register and login. Mutating API routes require admin (403 for viewer). JWT includes role; RequireAdmin middleware protects create/update/delete.

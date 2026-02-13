@@ -23,9 +23,12 @@ func NewUserRepo(db *sql.DB) *UserRepo {
 }
 
 // ==========================
-// Create User (password optional; if provided, stored as bcrypt hash)
+// Create User (password optional for viewer; required for admin; stored as bcrypt hash when set)
 // ==========================
-func (r *UserRepo) Create(username string, password string) (*models.User, error) {
+func (r *UserRepo) Create(username string, password string, role string) (*models.User, error) {
+	if role == "" {
+		role = models.RoleViewer
+	}
 	var hash interface{} = nil
 	if password != "" {
 		h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -35,13 +38,13 @@ func (r *UserRepo) Create(username string, password string) (*models.User, error
 		hash = string(h)
 	}
 	query := `
-		INSERT INTO users (username, password_hash)
-		VALUES ($1, $2)
-		RETURNING id, username
+		INSERT INTO users (username, password_hash, role)
+		VALUES ($1, $2, $3)
+		RETURNING id, username, role
 	`
 	user := &models.User{}
-	err := r.DB.QueryRow(query, username, hash).
-		Scan(&user.ID, &user.Username)
+	err := r.DB.QueryRow(query, username, hash, role).
+		Scan(&user.ID, &user.Username, &user.Role)
 	if err != nil {
 		return nil, err
 	}
@@ -53,14 +56,14 @@ func (r *UserRepo) Create(username string, password string) (*models.User, error
 // ==========================
 func (r *UserRepo) GetByID(id int) (*models.User, error) {
 	query := `
-		SELECT id, username, password_hash
+		SELECT id, username, password_hash, role
 		FROM users
 		WHERE id = $1
 	`
 	user := &models.User{}
 	var pwHash sql.NullString
 	err := r.DB.QueryRow(query, id).
-		Scan(&user.ID, &user.Username, &pwHash)
+		Scan(&user.ID, &user.Username, &pwHash, &user.Role)
 	if err != nil {
 		return nil, err
 	}
@@ -75,14 +78,14 @@ func (r *UserRepo) GetByID(id int) (*models.User, error) {
 // ==========================
 func (r *UserRepo) GetByUsername(username string) (*models.User, error) {
 	query := `
-		SELECT id, username, password_hash
+		SELECT id, username, password_hash, role
 		FROM users
 		WHERE username = $1
 	`
 	user := &models.User{}
 	var pwHash sql.NullString
 	err := r.DB.QueryRow(query, username).
-		Scan(&user.ID, &user.Username, &pwHash)
+		Scan(&user.ID, &user.Username, &pwHash, &user.Role)
 	if err != nil {
 		return nil, err
 	}
@@ -100,12 +103,12 @@ func (r *UserRepo) Update(id int, username string) (*models.User, error) {
 		UPDATE users
 		SET username = $1
 		WHERE id = $2
-		RETURNING id, username, password_hash
+		RETURNING id, username, password_hash, role
 	`
 	user := &models.User{}
 	var pwHash sql.NullString
 	err := r.DB.QueryRow(query, username, id).
-		Scan(&user.ID, &user.Username, &pwHash)
+		Scan(&user.ID, &user.Username, &pwHash, &user.Role)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +143,7 @@ func (r *UserRepo) Delete(id int) error {
 // List Users (password_hash not returned in list)
 // ==========================
 func (r *UserRepo) List() ([]models.User, error) {
-	rows, err := r.DB.Query(`SELECT id, username, password_hash FROM users ORDER BY id`)
+	rows, err := r.DB.Query(`SELECT id, username, password_hash, role FROM users ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +153,7 @@ func (r *UserRepo) List() ([]models.User, error) {
 	for rows.Next() {
 		var u models.User
 		var pwHash sql.NullString
-		if err := rows.Scan(&u.ID, &u.Username, &pwHash); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &pwHash, &u.Role); err != nil {
 			return nil, err
 		}
 		// Don't expose password_hash in list

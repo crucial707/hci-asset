@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/crucial707/hci-asset/internal/middleware"
+	"github.com/crucial707/hci-asset/internal/models"
 	"github.com/crucial707/hci-asset/internal/repo"
 	"github.com/go-chi/chi/v5"
 )
@@ -19,11 +20,13 @@ type UserHandler struct {
 }
 
 // ==========================
-// Create User
+// Create User (optional role default viewer; admin requires password)
 // ==========================
 func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Username string `json:"username"`
+		Password string `json:"password"`
+		Role     string `json:"role"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || input.Username == "" {
@@ -31,7 +34,20 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.Repo.Create(input.Username, "")
+	role := input.Role
+	if role == "" {
+		role = models.RoleViewer
+	}
+	if role != models.RoleViewer && role != models.RoleAdmin {
+		JSONError(w, "role must be viewer or admin", http.StatusBadRequest)
+		return
+	}
+	if role == models.RoleAdmin && input.Password == "" {
+		JSONError(w, "password is required for admin", http.StatusBadRequest)
+		return
+	}
+
+	user, err := h.Repo.Create(input.Username, input.Password, role)
 	if err != nil {
 		JSONError(w, "failed to create user", http.StatusInternalServerError)
 		return

@@ -19,9 +19,9 @@ func TestUserHandler_CreateUser(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`INSERT INTO users \(username, password_hash\)`).
-		WithArgs("charlie", nil).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "username"}).AddRow(3, "charlie"))
+	mock.ExpectQuery(`INSERT INTO users \(username, password_hash, role\)`).
+		WithArgs("charlie", nil, "viewer").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}).AddRow(3, "charlie", "viewer"))
 
 	userRepo := repo.NewUserRepo(db)
 	h := &UserHandler{Repo: userRepo}
@@ -81,10 +81,10 @@ func TestUserHandler_ListUsers(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, username, password_hash FROM users ORDER BY id`).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash"}).
-			AddRow(1, "alice", nil).
-			AddRow(2, "bob", nil))
+	mock.ExpectQuery(`SELECT id, username, password_hash, role FROM users ORDER BY id`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role"}).
+			AddRow(1, "alice", nil, "viewer").
+			AddRow(2, "bob", nil, "viewer"))
 
 	userRepo := repo.NewUserRepo(db)
 	h := &UserHandler{Repo: userRepo}
@@ -118,9 +118,9 @@ func TestUserHandler_GetUser(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, username, password_hash`).
+	mock.ExpectQuery(`SELECT id, username, password_hash, role`).
 		WithArgs(1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash"}).AddRow(1, "alice", nil))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role"}).AddRow(1, "alice", nil, "viewer"))
 
 	userRepo := repo.NewUserRepo(db)
 	h := &UserHandler{Repo: userRepo}
@@ -154,7 +154,7 @@ func TestUserHandler_GetUser_NotFound(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, username, password_hash`).
+	mock.ExpectQuery(`SELECT id, username, password_hash, role`).
 		WithArgs(999).
 		WillReturnError(sql.ErrNoRows)
 
@@ -204,7 +204,7 @@ func TestUserHandler_UpdateUser(t *testing.T) {
 
 	mock.ExpectQuery(`UPDATE users`).
 		WithArgs("alice2", 1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash"}).AddRow(1, "alice2", nil))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role"}).AddRow(1, "alice2", nil, "viewer"))
 
 	userRepo := repo.NewUserRepo(db)
 	h := &UserHandler{Repo: userRepo}
