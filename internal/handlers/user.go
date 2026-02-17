@@ -138,18 +138,26 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 
 	var input struct {
 		Username string `json:"username"`
+		Role     string `json:"role"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		JSONError(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
+	fields := make(map[string]string)
 	if input.Username == "" {
-		JSONValidationError(w, "validation failed", map[string]string{"username": "required"}, http.StatusBadRequest)
+		fields["username"] = "required"
+	}
+	if input.Role != "" && input.Role != models.RoleViewer && input.Role != models.RoleAdmin {
+		fields["role"] = "must be viewer or admin"
+	}
+	if len(fields) > 0 {
+		JSONValidationError(w, "validation failed", fields, http.StatusBadRequest)
 		return
 	}
 
-	user, err := h.Repo.Update(r.Context(), id, input.Username)
+	user, err := h.Repo.Update(r.Context(), id, input.Username, input.Role)
 	if err != nil {
 		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return

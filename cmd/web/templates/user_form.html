@@ -5,6 +5,11 @@
 <form method="post" action="{{.FormAction}}">
   <label for="username">Username</label>
   <input type="text" id="username" name="username" required {{if .User}}value="{{.User.Username}}"{{end}}>
+  <label for="role">Role</label>
+  <select id="role" name="role">
+    <option value="viewer" {{if or (not .User) (eq .User.Role "viewer") (eq .User.Role "")}}selected{{end}}>Viewer</option>
+    <option value="admin" {{if and .User (eq .User.Role "admin")}}selected{{end}}>Admin</option>
+  </select>
   <button type="submit">{{.SubmitLabel}}</button>
 </form>
 <p><a href="/users">← Users</a></p>

@@ -97,18 +97,18 @@ func (r *UserRepo) GetByUsername(ctx context.Context, username string) (*models.
 }
 
 // ==========================
-// Update User
+// Update User (username and optional role; empty role keeps existing role)
 // ==========================
-func (r *UserRepo) Update(ctx context.Context, id int, username string) (*models.User, error) {
+func (r *UserRepo) Update(ctx context.Context, id int, username string, role string) (*models.User, error) {
 	query := `
 		UPDATE users
-		SET username = $1
-		WHERE id = $2
+		SET username = $1, role = COALESCE(NULLIF($2, ''), role)
+		WHERE id = $3
 		RETURNING id, username, password_hash, role
 	`
 	user := &models.User{}
 	var pwHash sql.NullString
-	err := r.DB.QueryRowContext(ctx, query, username, id).
+	err := r.DB.QueryRowContext(ctx, query, username, role, id).
 		Scan(&user.ID, &user.Username, &pwHash, &user.Role)
 	if err != nil {
 		return nil, err

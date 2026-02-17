@@ -1326,6 +1326,7 @@ func usersList(apiBase string) http.HandlerFunc {
 			Items []struct {
 				ID       int    `json:"id"`
 				Username string `json:"username"`
+				Role     string `json:"role"`
 			} `json:"items"`
 		}
 		if err := json.Unmarshal(data, &listResp); err != nil {
@@ -1344,6 +1345,7 @@ func userCreateForm(apiBase string) http.HandlerFunc {
 		renderTemplate(w, "user_form.html", map[string]interface{}{
 			"FormAction":  "/users",
 			"SubmitLabel": "Create user",
+			"IsCreate":    true,
 		})
 	}
 }
@@ -1355,11 +1357,16 @@ func userCreate(apiBase string) http.HandlerFunc {
 			return
 		}
 		username := strings.TrimSpace(r.FormValue("username"))
+		role := strings.TrimSpace(r.FormValue("role"))
+		if role == "" {
+			role = "viewer"
+		}
 		if username == "" {
 			renderTemplate(w, "user_form.html", map[string]interface{}{
 				"Error":       "Username is required",
 				"FormAction":  "/users",
 				"SubmitLabel": "Create user",
+				"IsCreate":    true,
 			})
 			return
 		}
@@ -1370,7 +1377,7 @@ func userCreate(apiBase string) http.HandlerFunc {
 			tok = token.Value
 		}
 
-		body := []byte(fmt.Sprintf(`{"username":%q}`, username))
+		body := []byte(fmt.Sprintf(`{"username":%q,"role":%q}`, username, role))
 		data, status, err := apiPost(apiBase, "/users", tok, body)
 		if err != nil {
 			renderTemplate(w, "user_form.html", map[string]interface{}{
@@ -1441,6 +1448,7 @@ func userEditForm(apiBase string) http.HandlerFunc {
 		var user struct {
 			ID       int    `json:"id"`
 			Username string `json:"username"`
+			Role     string `json:"role"`
 		}
 		if err := json.Unmarshal(data, &user); err != nil {
 			renderTemplate(w, "user_form.html", map[string]interface{}{"Error": "Invalid user response"})
@@ -1463,10 +1471,11 @@ func userUpdate(apiBase string) http.HandlerFunc {
 			return
 		}
 		username := strings.TrimSpace(r.FormValue("username"))
+		role := strings.TrimSpace(r.FormValue("role"))
 		editPayload := func(errMsg string) map[string]interface{} {
 			return map[string]interface{}{
 				"Error":       errMsg,
-				"User":       map[string]interface{}{"Username": username},
+				"User":       map[string]interface{}{"Username": username, "Role": role},
 				"FormAction":  "/users/" + id + "/edit",
 				"SubmitLabel": "Save changes",
 			}
@@ -1482,7 +1491,7 @@ func userUpdate(apiBase string) http.HandlerFunc {
 			tok = token.Value
 		}
 
-		body := []byte(fmt.Sprintf(`{"username":%q}`, username))
+		body := []byte(fmt.Sprintf(`{"username":%q,"role":%q}`, username, role))
 		data, status, err := apiPut(apiBase, "/users/"+id, tok, body)
 		if err != nil {
 			renderTemplate(w, "user_form.html", editPayload(err.Error()))

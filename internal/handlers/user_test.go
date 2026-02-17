@@ -208,7 +208,7 @@ func TestUserHandler_UpdateUser(t *testing.T) {
 	defer db.Close()
 
 	mock.ExpectQuery(`UPDATE users`).
-		WithArgs("alice2", 1).
+		WithArgs("alice2", "", 1).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role"}).AddRow(1, "alice2", nil, "viewer"))
 
 	userRepo := repo.NewUserRepo(db)
