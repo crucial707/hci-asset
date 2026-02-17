@@ -29,33 +29,38 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		Role     string `json:"role"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || input.Username == "" {
-		JSONError(w, "invalid JSON or missing username", http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		JSONError(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
-
+	fields := make(map[string]string)
+	if input.Username == "" {
+		fields["username"] = "required"
+	}
 	role := input.Role
 	if role == "" {
 		role = models.RoleViewer
 	}
 	if role != models.RoleViewer && role != models.RoleAdmin {
-		JSONError(w, "role must be viewer or admin", http.StatusBadRequest)
-		return
+		fields["role"] = "must be viewer or admin"
 	}
 	if role == models.RoleAdmin && input.Password == "" {
-		JSONError(w, "password is required for admin", http.StatusBadRequest)
+		fields["password"] = "required for admin"
+	}
+	if len(fields) > 0 {
+		JSONValidationError(w, "validation failed", fields, http.StatusBadRequest)
 		return
 	}
 
-	user, err := h.Repo.Create(input.Username, input.Password, role)
+	user, err := h.Repo.Create(r.Context(), input.Username, input.Password, role)
 	if err != nil {
-		JSONError(w, "failed to create user", http.StatusInternalServerError)
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
 
 	if h.AuditRepo != nil {
 		if userID, ok := middleware.GetUserID(r.Context()); ok {
-			_ = h.AuditRepo.Log(userID, "create", "user", user.ID, "")
+			_ = h.AuditRepo.Log(r.Context(), userID, "create", "user", user.ID, "")
 		}
 	}
 
@@ -67,9 +72,9 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 // List Users
 // ==========================
 func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := h.Repo.List()
+	users, err := h.Repo.List(r.Context())
 	if err != nil {
-		JSONError(w, "failed to fetch users", http.StatusInternalServerError)
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
 
@@ -88,7 +93,7 @@ func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.Repo.GetByID(id)
+	user, err := h.Repo.GetByID(r.Context(), id)
 	if err != nil {
 		JSONError(w, "user not found", http.StatusNotFound)
 		return
@@ -113,20 +118,24 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || input.Username == "" {
-		JSONError(w, "invalid JSON or missing username", http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		JSONError(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if input.Username == "" {
+		JSONValidationError(w, "validation failed", map[string]string{"username": "required"}, http.StatusBadRequest)
 		return
 	}
 
-	user, err := h.Repo.Update(id, input.Username)
+	user, err := h.Repo.Update(r.Context(), id, input.Username)
 	if err != nil {
-		JSONError(w, "failed to update user", http.StatusInternalServerError)
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
 
 	if h.AuditRepo != nil {
 		if userID, ok := middleware.GetUserID(r.Context()); ok {
-			_ = h.AuditRepo.Log(userID, "update", "user", id, "")
+			_ = h.AuditRepo.Log(r.Context(), userID, "update", "user", id, "")
 		}
 	}
 
@@ -145,14 +154,14 @@ func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.Repo.Delete(id); err != nil {
-		JSONError(w, "failed to delete user", http.StatusInternalServerError)
+	if err := h.Repo.Delete(r.Context(), id); err != nil {
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
 
 	if h.AuditRepo != nil {
 		if userID, ok := middleware.GetUserID(r.Context()); ok {
-			_ = h.AuditRepo.Log(userID, "delete", "user", id, "")
+			_ = h.AuditRepo.Log(r.Context(), userID, "delete", "user", id, "")
 		}
 	}
 

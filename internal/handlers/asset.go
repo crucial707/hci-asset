@@ -44,24 +44,33 @@ func (h *AssetHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if input.Name == "" || input.Description == "" {
-		JSONError(w, "name and description are required", http.StatusBadRequest)
-		return
+	fields := make(map[string]string)
+	if input.Name == "" {
+		fields["name"] = "required"
 	}
-	if len(input.Name) > MaxNameLength || len(input.Description) > MaxDescriptionLength {
-		JSONError(w, "name or description too long", http.StatusBadRequest)
+	if input.Description == "" {
+		fields["description"] = "required"
+	}
+	if len(input.Name) > MaxNameLength {
+		fields["name"] = "too long"
+	}
+	if len(input.Description) > MaxDescriptionLength {
+		fields["description"] = "too long"
+	}
+	if len(fields) > 0 {
+		JSONValidationError(w, "validation failed", fields, http.StatusBadRequest)
 		return
 	}
 
-	asset, err := h.Repo.Create(input.Name, input.Description, input.Tags)
+	asset, err := h.Repo.Create(r.Context(), input.Name, input.Description, input.Tags)
 	if err != nil {
-		JSONError(w, "failed to create asset", http.StatusInternalServerError)
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
 
 	if h.AuditRepo != nil {
 		if userID, ok := middleware.GetUserID(r.Context()); ok {
-			_ = h.AuditRepo.Log(userID, "create", "asset", asset.ID, "")
+			_ = h.AuditRepo.Log(r.Context(), userID, "create", "asset", asset.ID, "")
 		}
 	}
 
@@ -93,15 +102,15 @@ func (h *AssetHandler) ListAssets(w http.ResponseWriter, r *http.Request) {
 	var err error
 	switch {
 	case tag != "":
-		assets, err = h.Repo.ListByTag(tag, limit, offset)
+		assets, err = h.Repo.ListByTag(r.Context(), tag, limit, offset)
 	case search != "":
-		assets, err = h.Repo.Search(search, limit, offset)
+		assets, err = h.Repo.Search(r.Context(), search, limit, offset)
 	default:
-		assets, err = h.Repo.List(limit, offset)
+		assets, err = h.Repo.List(r.Context(), limit, offset)
 	}
 	if err != nil {
 		log.Printf("ListAssets error: %v", err)
-		JSONError(w, "failed to fetch assets", http.StatusInternalServerError)
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
 
@@ -120,7 +129,7 @@ func (h *AssetHandler) GetAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	asset, err := h.Repo.Get(id)
+	asset, err := h.Repo.Get(r.Context(), id)
 	if err != nil {
 		JSONError(w, "asset not found", http.StatusNotFound)
 		return
@@ -147,20 +156,33 @@ func (h *AssetHandler) UpdateAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if input.Name == "" || input.Description == "" {
-		JSONError(w, "name and description required", http.StatusBadRequest)
+	fields := make(map[string]string)
+	if input.Name == "" {
+		fields["name"] = "required"
+	}
+	if input.Description == "" {
+		fields["description"] = "required"
+	}
+	if len(input.Name) > MaxNameLength {
+		fields["name"] = "too long"
+	}
+	if len(input.Description) > MaxDescriptionLength {
+		fields["description"] = "too long"
+	}
+	if len(fields) > 0 {
+		JSONValidationError(w, "validation failed", fields, http.StatusBadRequest)
 		return
 	}
 
-	asset, err := h.Repo.Update(id, input.Name, input.Description, input.Tags)
+	asset, err := h.Repo.Update(r.Context(), id, input.Name, input.Description, input.Tags)
 	if err != nil {
-		JSONError(w, "failed to update asset", http.StatusInternalServerError)
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
 
 	if h.AuditRepo != nil {
 		if userID, ok := middleware.GetUserID(r.Context()); ok {
-			_ = h.AuditRepo.Log(userID, "update", "asset", id, "")
+			_ = h.AuditRepo.Log(r.Context(), userID, "update", "asset", id, "")
 		}
 	}
 
@@ -179,13 +201,13 @@ func (h *AssetHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	asset, err := h.Repo.Heartbeat(id)
+	asset, err := h.Repo.Heartbeat(r.Context(), id)
 	if err != nil {
 		if err.Error() == "asset not found" {
 			JSONError(w, "asset not found", http.StatusNotFound)
 			return
 		}
-		JSONError(w, "failed to record heartbeat", http.StatusInternalServerError)
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
 
@@ -204,14 +226,14 @@ func (h *AssetHandler) DeleteAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.Repo.Delete(id); err != nil {
-		JSONError(w, "failed to delete asset", http.StatusInternalServerError)
+	if err := h.Repo.Delete(r.Context(), id); err != nil {
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
 
 	if h.AuditRepo != nil {
 		if userID, ok := middleware.GetUserID(r.Context()); ok {
-			_ = h.AuditRepo.Log(userID, "delete", "asset", id, "")
+			_ = h.AuditRepo.Log(r.Context(), userID, "delete", "asset", id, "")
 		}
 	}
 

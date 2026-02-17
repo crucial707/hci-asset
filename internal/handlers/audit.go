@@ -28,9 +28,9 @@ func (h *AuditHandler) ListAudit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	entries, err := h.Repo.List(limit, offset)
+	entries, err := h.Repo.List(r.Context(), limit, offset)
 	if err != nil {
-		JSONError(w, "failed to fetch audit log", http.StatusInternalServerError)
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
 

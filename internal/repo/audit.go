@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"context"
 	"database/sql"
 
 	"github.com/crucial707/hci-asset/internal/models"
@@ -17,8 +18,8 @@ func NewAuditRepo(db *sql.DB) *AuditRepo {
 }
 
 // Log records an audit entry. action is create|update|delete; resourceType is asset|user.
-func (r *AuditRepo) Log(userID int, action, resourceType string, resourceID int, details string) error {
-	_, err := r.db.Exec(
+func (r *AuditRepo) Log(ctx context.Context, userID int, action, resourceType string, resourceID int, details string) error {
+	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO audit_log (user_id, action, resource_type, resource_id, details) VALUES ($1, $2, $3, $4, $5)`,
 		userID, action, resourceType, resourceID, details,
 	)
@@ -26,8 +27,8 @@ func (r *AuditRepo) Log(userID int, action, resourceType string, resourceID int,
 }
 
 // List returns recent audit entries, newest first.
-func (r *AuditRepo) List(limit, offset int) ([]models.AuditEntry, error) {
-	rows, err := r.db.Query(
+func (r *AuditRepo) List(ctx context.Context, limit, offset int) ([]models.AuditEntry, error) {
+	rows, err := r.db.QueryContext(ctx,
 		`SELECT id, user_id, action, resource_type, resource_id, COALESCE(details,''), created_at FROM audit_log ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
 		limit, offset,
 	)

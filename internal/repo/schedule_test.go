@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 	"time"
@@ -23,7 +24,7 @@ func TestScheduleRepo_List(t *testing.T) {
 			AddRow(1, "192.168.1.0/24", "*/5 * * * *", false, now.Add(-time.Hour)))
 
 	r := NewScheduleRepo(db)
-	list, err := r.List(50, 0)
+	list, err := r.List(context.Background(), 50, 0)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -53,7 +54,7 @@ func TestScheduleRepo_List_Empty(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "target", "cron_expr", "enabled", "created_at"}))
 
 	r := NewScheduleRepo(db)
-	list, err := r.List(10, 0)
+	list, err := r.List(context.Background(), 10, 0)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -78,7 +79,7 @@ func TestScheduleRepo_ListEnabled(t *testing.T) {
 			AddRow(1, "192.168.1.0/24", "0 * * * *", true, now))
 
 	r := NewScheduleRepo(db)
-	list, err := r.ListEnabled()
+	list, err := r.ListEnabled(context.Background())
 	if err != nil {
 		t.Fatalf("ListEnabled: %v", err)
 	}
@@ -107,7 +108,7 @@ func TestScheduleRepo_GetByID(t *testing.T) {
 			AddRow(1, "192.168.1.0/24", "0 * * * *", true, now))
 
 	r := NewScheduleRepo(db)
-	s, err := r.GetByID(1)
+	s, err := r.GetByID(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
 	}
@@ -134,7 +135,7 @@ func TestScheduleRepo_GetByID_NotFound(t *testing.T) {
 		WillReturnError(sql.ErrNoRows)
 
 	r := NewScheduleRepo(db)
-	s, err := r.GetByID(999)
+	s, err := r.GetByID(context.Background(), 999)
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
 	}
@@ -160,7 +161,7 @@ func TestScheduleRepo_Create(t *testing.T) {
 			AddRow(1, "192.168.1.0/24", "0 * * * *", true, now))
 
 	r := NewScheduleRepo(db)
-	s, err := r.Create("192.168.1.0/24", "0 * * * *", true)
+	s, err := r.Create(context.Background(), "192.168.1.0/24", "0 * * * *", true)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -184,7 +185,7 @@ func TestScheduleRepo_Update(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	r := NewScheduleRepo(db)
-	err = r.Update(1, "10.0.0.0/24", "*/15 * * * *", false)
+	err = r.Update(context.Background(), 1, "10.0.0.0/24", "*/15 * * * *", false)
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -205,7 +206,7 @@ func TestScheduleRepo_Delete(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	r := NewScheduleRepo(db)
-	err = r.Delete(1)
+	err = r.Delete(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("Delete: %v", err)
 	}

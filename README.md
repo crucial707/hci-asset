@@ -69,8 +69,11 @@ hci-asset-api"
 | DB_NAME    | Database name                  |
 | DB_USER    | Database username              |
 | DB_PASS    | Database password              |
-| JWT_SECRET | Secret used to sign JWT tokens |
+| JWT_SECRET | Secret used to sign JWT tokens. When **ENV** is not `dev`, must be set to a secure value (default is refused). |
+| ENV | `dev` (default) or `prod`. When `prod`, startup fails if **JWT_SECRET** is unset or equals the default. |
+| JWT_EXPIRE_HOURS | JWT token lifetime in hours (default `24`). |
 | NMAP_PATH  | Path to nmap executable (default: `nmap`). For Docker the image includes nmap. On Windows, set to e.g. `C:\Program Files (x86)\Nmap\nmap.exe` if scans fail. |
+| CORS_ALLOWED_ORIGINS | Comma-separated list of origins allowed for CORS (e.g. `http://localhost:3000`, `https://app.example.com`). When unset, no CORS headers are sent (same-origin only). |
 
 If PostgreSQL is running on your host machine, use:
 "DB_HOST=host.docker.internal"

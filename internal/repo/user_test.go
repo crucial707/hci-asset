@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 
@@ -19,7 +20,7 @@ func TestUserRepo_Create(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "role"}).AddRow(1, "alice", "viewer"))
 
 	repo := NewUserRepo(db)
-	user, err := repo.Create("alice", "", "viewer")
+	user, err := repo.Create(context.Background(), "alice", "", "viewer")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -43,7 +44,7 @@ func TestUserRepo_GetByID(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role"}).AddRow(1, "bob", nil, "viewer"))
 
 	repo := NewUserRepo(db)
-	user, err := repo.GetByID(1)
+	user, err := repo.GetByID(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
 	}
@@ -67,7 +68,7 @@ func TestUserRepo_GetByID_NotFound(t *testing.T) {
 		WillReturnError(sql.ErrNoRows)
 
 	repo := NewUserRepo(db)
-	_, err = repo.GetByID(999)
+	_, err = repo.GetByID(context.Background(), 999)
 	if err == nil {
 		t.Fatal("expected error for missing user")
 	}
@@ -91,7 +92,7 @@ func TestUserRepo_GetByUsername(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role"}).AddRow(2, "charlie", nil, "viewer"))
 
 	repo := NewUserRepo(db)
-	user, err := repo.GetByUsername("charlie")
+	user, err := repo.GetByUsername(context.Background(), "charlie")
 	if err != nil {
 		t.Fatalf("GetByUsername: %v", err)
 	}

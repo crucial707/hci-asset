@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"context"
 	"log"
 	"sync"
 	"time"
@@ -26,7 +27,7 @@ func Run(scheduleRepo *repo.ScheduleRepo, runScan func(target string)) {
 		}
 		entryByID = make(map[int]cron.EntryID)
 
-		list, err := scheduleRepo.ListEnabled()
+		list, err := scheduleRepo.ListEnabled(context.Background())
 		if err != nil {
 			log.Printf("scheduler: list enabled schedules: %v", err)
 			return

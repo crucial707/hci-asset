@@ -222,12 +222,18 @@ func TestAssetHandler_CreateAsset_BadRequest(t *testing.T) {
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("CreateAsset status: got %d, want 400", rr.Code)
 	}
-	var out map[string]string
+	var out struct {
+		Error  string            `json:"error"`
+		Fields map[string]string `json:"fields"`
+	}
 	if err := json.NewDecoder(rr.Body).Decode(&out); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if out["error"] != "name and description are required" {
-		t.Errorf("unexpected error: %v", out["error"])
+	if out.Error != "validation failed" {
+		t.Errorf("unexpected error: %v", out.Error)
+	}
+	if out.Fields["name"] != "required" {
+		t.Errorf("unexpected fields: %v", out.Fields)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("expectations: %v", err)

@@ -17,8 +17,9 @@ import (
 // Auth Handler
 // ==========================
 type AuthHandler struct {
-	UserRepo *repo.UserRepo
-	Secret   []byte
+	UserRepo     *repo.UserRepo
+	Secret       []byte
+	ExpireHours  int // JWT token lifetime in hours
 }
 
 // ==========================
@@ -40,22 +41,25 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	if role == "" {
 		role = models.RoleViewer
 	}
+	fields := make(map[string]string)
 	if role != models.RoleViewer && role != models.RoleAdmin {
-		JSONError(w, "role must be viewer or admin", http.StatusBadRequest)
-		return
+		fields["role"] = "must be viewer or admin"
 	}
 	if role == models.RoleAdmin && input.Password == "" {
-		JSONError(w, "password is required for admin", http.StatusBadRequest)
+		fields["password"] = "required for admin"
+	}
+	if len(fields) > 0 {
+		JSONValidationError(w, "validation failed", fields, http.StatusBadRequest)
 		return
 	}
 
-	user, err := h.UserRepo.Create(input.Username, input.Password, role)
+	user, err := h.UserRepo.Create(r.Context(), input.Username, input.Password, role)
 	if err != nil {
 		// Idempotent: if user already exists, return existing user (200)
 		if e, ok := err.(*pq.Error); ok && e.Code == "23505" {
-			user, getErr := h.UserRepo.GetByUsername(input.Username)
+			user, getErr := h.UserRepo.GetByUsername(r.Context(), input.Username)
 			if getErr != nil {
-				JSONError(w, "failed to create user", http.StatusInternalServerError)
+				JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -63,7 +67,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		log.Printf("Register: create user failed: %v", err)
-		JSONError(w, "failed to create user", http.StatusInternalServerError)
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
 
@@ -85,7 +89,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.UserRepo.GetByUsername(input.Username)
+	user, err := h.UserRepo.GetByUsername(r.Context(), input.Username)
 	if err != nil {
 		JSONError(w, "invalid credentials", http.StatusUnauthorized)
 		return
@@ -115,18 +119,22 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	expHours := h.ExpireHours
+	if expHours <= 0 {
+		expHours = 24
+	}
 	// Create JWT token
 	claims := jwt.MapClaims{
 		"user_id":  user.ID,
 		"username": user.Username,
 		"role":     user.Role,
-		"exp":      time.Now().Add(24 * time.Hour).Unix(),
+		"exp":      time.Now().Add(time.Duration(expHours) * time.Hour).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signed, err := token.SignedString(h.Secret)
 	if err != nil {
-		JSONError(w, "failed to issue token", http.StatusInternalServerError)
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
 

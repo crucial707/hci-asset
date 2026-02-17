@@ -29,9 +29,9 @@ func (h *ScheduleHandler) ListSchedules(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	list, err := h.Repo.List(limit, offset)
+	list, err := h.Repo.List(r.Context(), limit, offset)
 	if err != nil {
-		JSONError(w, "failed to list schedules", http.StatusInternalServerError)
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
 
@@ -48,9 +48,9 @@ func (h *ScheduleHandler) GetSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s, err := h.Repo.GetByID(id)
+	s, err := h.Repo.GetByID(r.Context(), id)
 	if err != nil {
-		JSONError(w, "failed to get schedule", http.StatusInternalServerError)
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
 	if s == nil {
@@ -73,8 +73,15 @@ func (h *ScheduleHandler) CreateSchedule(w http.ResponseWriter, r *http.Request)
 		JSONError(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
-	if input.Target == "" || input.CronExpr == "" {
-		JSONError(w, "target and cron_expr are required", http.StatusBadRequest)
+	fields := make(map[string]string)
+	if input.Target == "" {
+		fields["target"] = "required"
+	}
+	if input.CronExpr == "" {
+		fields["cron_expr"] = "required"
+	}
+	if len(fields) > 0 {
+		JSONValidationError(w, "validation failed", fields, http.StatusBadRequest)
 		return
 	}
 
@@ -83,9 +90,9 @@ func (h *ScheduleHandler) CreateSchedule(w http.ResponseWriter, r *http.Request)
 		enabled = *input.Enabled
 	}
 
-	s, err := h.Repo.Create(input.Target, input.CronExpr, enabled)
+	s, err := h.Repo.Create(r.Context(), input.Target, input.CronExpr, enabled)
 	if err != nil {
-		JSONError(w, "failed to create schedule", http.StatusInternalServerError)
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
 
@@ -112,8 +119,15 @@ func (h *ScheduleHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 		JSONError(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
-	if input.Target == "" || input.CronExpr == "" {
-		JSONError(w, "target and cron_expr are required", http.StatusBadRequest)
+	fields := make(map[string]string)
+	if input.Target == "" {
+		fields["target"] = "required"
+	}
+	if input.CronExpr == "" {
+		fields["cron_expr"] = "required"
+	}
+	if len(fields) > 0 {
+		JSONValidationError(w, "validation failed", fields, http.StatusBadRequest)
 		return
 	}
 
@@ -122,12 +136,12 @@ func (h *ScheduleHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 		enabled = *input.Enabled
 	}
 
-	if err := h.Repo.Update(id, input.Target, input.CronExpr, enabled); err != nil {
-		JSONError(w, "failed to update schedule", http.StatusInternalServerError)
+	if err := h.Repo.Update(r.Context(), id, input.Target, input.CronExpr, enabled); err != nil {
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
 
-	s, _ := h.Repo.GetByID(id)
+	s, _ := h.Repo.GetByID(r.Context(), id)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(s)
 }
@@ -141,8 +155,8 @@ func (h *ScheduleHandler) DeleteSchedule(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := h.Repo.Delete(id); err != nil {
-		JSONError(w, "failed to delete schedule", http.StatusInternalServerError)
+	if err := h.Repo.Delete(r.Context(), id); err != nil {
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
 

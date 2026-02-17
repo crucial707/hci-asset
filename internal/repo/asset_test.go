@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 	"time"
@@ -21,7 +22,7 @@ func TestAssetRepo_Create(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(42))
 
 	repo := NewAssetRepo(db)
-	asset, err := repo.Create("my-asset", "my desc", nil)
+	asset, err := repo.Create(context.Background(), "my-asset", "my desc", nil)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -47,7 +48,7 @@ func TestAssetRepo_Get(t *testing.T) {
 			AddRow(1, "a1", "desc1", "{}", now))
 
 	repo := NewAssetRepo(db)
-	asset, err := repo.Get(1)
+	asset, err := repo.Get(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -71,7 +72,7 @@ func TestAssetRepo_Get_NotFound(t *testing.T) {
 		WillReturnError(sql.ErrNoRows)
 
 	repo := NewAssetRepo(db)
-	_, err = repo.Get(999)
+	_, err = repo.Get(context.Background(), 999)
 	if err == nil {
 		t.Fatal("expected error for missing asset")
 	}
@@ -97,7 +98,7 @@ func TestAssetRepo_List(t *testing.T) {
 			AddRow(2, "n2", "d2", "{}", nil))
 
 	repo := NewAssetRepo(db)
-	assets, err := repo.List(10, 0)
+	assets, err := repo.List(context.Background(), 10, 0)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -121,7 +122,7 @@ func TestAssetRepo_Delete(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	repo := NewAssetRepo(db)
-	err = repo.Delete(1)
+	err = repo.Delete(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
@@ -148,7 +149,7 @@ func TestAssetRepo_Heartbeat(t *testing.T) {
 			AddRow(1, "a1", "d1", "{}", now))
 
 	repo := NewAssetRepo(db)
-	asset, err := repo.Heartbeat(1)
+	asset, err := repo.Heartbeat(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("Heartbeat: %v", err)
 	}

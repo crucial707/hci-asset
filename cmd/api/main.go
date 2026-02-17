@@ -1,11 +1,16 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	_ "github.com/lib/pq"
 
@@ -16,13 +21,26 @@ import (
 	"github.com/crucial707/hci-asset/internal/repo"
 	"github.com/crucial707/hci-asset/internal/scheduler"
 	"github.com/go-chi/chi/v5"
+	chimw "github.com/go-chi/chi/v5/middleware"
 )
 
+const defaultJWTSecret = "supersecretkey"
+
 func main() {
-	// Load configuration
 	cfg := config.Load()
 
-	// Connect to Postgres (config from env: DB_HOST, DB_PORT, etc.; defaults match local docker-compose)
+	// In non-dev mode, refuse to run with default or empty JWT_SECRET
+	if cfg.Env != "dev" {
+		if cfg.JWTSecret == "" || cfg.JWTSecret == defaultJWTSecret {
+			log.Fatal("refusing to start: set JWT_SECRET to a secure value when ENV is not dev")
+		}
+	}
+
+	// Structured logging: JSON in production when LOG_FORMAT=json
+	if cfg.LogFormat == "json" {
+		slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	}
+
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		cfg.DBUser, cfg.DBPass, cfg.DBHost, cfg.DBPort, cfg.DBName)
 	dbConn, err := sql.Open("postgres", dsn)
@@ -31,34 +49,50 @@ func main() {
 	}
 	defer dbConn.Close()
 
+	dbConn.SetMaxOpenConns(cfg.DBMaxOpenConns)
+	dbConn.SetMaxIdleConns(cfg.DBMaxIdleConns)
+
 	if err := dbConn.Ping(); err != nil {
 		log.Fatalf("DB ping failed (host=%s port=%s): %v", cfg.DBHost, cfg.DBPort, err)
 	}
 
-	// Run migrations from internal/db/migrations/ unless SKIP_MIGRATIONS is set
 	if os.Getenv("SKIP_MIGRATIONS") == "" {
 		if err := db.Run(dsn); err != nil {
 			log.Fatalf("migrations: %v", err)
 		}
-		log.Printf("migrations: up to date")
+		slog.Info("migrations: up to date")
 	}
 
 	r, scanHandler, scheduleRepo := newRouter(dbConn, cfg)
-	go scheduler.Run(scheduleRepo, func(target string) { scanHandler.StartScanTarget(target) })
+	go scheduler.Run(scheduleRepo, func(target string) { scanHandler.StartScanTarget(context.Background(), target) })
 
-	// ==========================
 	addr := ":" + cfg.Port
-	if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
-		log.Printf("API server running with HTTPS on %s", addr)
-		if err := http.ListenAndServeTLS(addr, cfg.TLSCertFile, cfg.TLSKeyFile, r); err != nil {
-			log.Fatalf("ListenAndServeTLS failed: %v", err)
+	srv := &http.Server{Addr: addr, Handler: r}
+
+	go func() {
+		if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
+			slog.Info("API server running with HTTPS", "addr", addr)
+			if err := srv.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("ListenAndServeTLS: %v", err)
+			}
+		} else {
+			slog.Info("API server running", "addr", addr, "protocol", "HTTP")
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("ListenAndServe: %v", err)
+			}
 		}
-	} else {
-		log.Printf("API server running on %s (HTTP)", addr)
-		if err := http.ListenAndServe(addr, r); err != nil {
-			log.Fatalf("ListenAndServe failed: %v", err)
-		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("server shutdown: %v", err)
 	}
+	slog.Info("API server stopped")
 }
 
 // newRouter builds the HTTP router with handlers and middleware (used by main and tests).
@@ -76,11 +110,18 @@ func newRouter(db *sql.DB, cfg config.Config) (*chi.Mux, *handlers.ScanHandler, 
 	auditHandler := &handlers.AuditHandler{Repo: auditRepo}
 	scheduleHandler := &handlers.ScheduleHandler{Repo: scheduleRepo}
 	authHandler := &handlers.AuthHandler{
-		UserRepo: userRepo,
-		Secret:   []byte(cfg.JWTSecret),
+		UserRepo:    userRepo,
+		Secret:      []byte(cfg.JWTSecret),
+		ExpireHours: cfg.JWTExpireHours,
 	}
 
 	r := chi.NewRouter()
+	r.Use(middleware.CORS(cfg.CORSAllowedOrigins))
+	r.Use(middleware.SecurityHeaders(cfg.TLSCertFile != "" && cfg.TLSKeyFile != ""))
+	r.Use(middleware.MaxBytes(0)) // 0 => use default 1 MiB
+	r.Use(middleware.Recoverer)
+	r.Use(chimw.RequestID)
+	r.Use(middleware.RequestLog)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok"))

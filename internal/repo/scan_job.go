@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"time"
@@ -30,9 +31,9 @@ func NewScanJobRepo(db *sql.DB) *ScanJobRepo {
 }
 
 // Create inserts a new scan job with status=running and returns its id.
-func (r *ScanJobRepo) Create(target string) (int, error) {
+func (r *ScanJobRepo) Create(ctx context.Context, target string) (int, error) {
 	var id int
-	err := r.DB.QueryRow(
+	err := r.DB.QueryRowContext(ctx,
 		`INSERT INTO scan_jobs (target, status) VALUES ($1, 'running') RETURNING id`,
 		target,
 	).Scan(&id)
@@ -40,7 +41,7 @@ func (r *ScanJobRepo) Create(target string) (int, error) {
 }
 
 // Update sets status, completed_at, error, and assets for a job.
-func (r *ScanJobRepo) Update(id int, status string, completedAt *time.Time, errMsg string, assets []models.Asset) error {
+func (r *ScanJobRepo) Update(ctx context.Context, id int, status string, completedAt *time.Time, errMsg string, assets []models.Asset) error {
 	var assetsJSON []byte
 	if len(assets) > 0 {
 		var err error
@@ -49,7 +50,7 @@ func (r *ScanJobRepo) Update(id int, status string, completedAt *time.Time, errM
 			return err
 		}
 	}
-	_, err := r.DB.Exec(
+	_, err := r.DB.ExecContext(ctx,
 		`UPDATE scan_jobs SET status = $1, completed_at = $2, error = $3, assets = $4 WHERE id = $5`,
 		status, completedAt, nullString(errMsg), nullJSON(assetsJSON), id,
 	)
@@ -71,12 +72,12 @@ func nullJSON(b []byte) interface{} {
 }
 
 // GetByID returns a scan job by id, or nil if not found.
-func (r *ScanJobRepo) GetByID(id int) (*ScanJobRow, error) {
+func (r *ScanJobRepo) GetByID(ctx context.Context, id int) (*ScanJobRow, error) {
 	var row ScanJobRow
 	var completedAt sql.NullTime
 	var errMsg sql.NullString
 	var assetsJSON []byte
-	err := r.DB.QueryRow(
+	err := r.DB.QueryRowContext(ctx,
 		`SELECT id, target, status, started_at, completed_at, error, assets FROM scan_jobs WHERE id = $1`,
 		id,
 	).Scan(&row.ID, &row.Target, &row.Status, &row.StartedAt, &completedAt, &errMsg, &assetsJSON)
@@ -107,8 +108,8 @@ type ListEntry struct {
 }
 
 // List returns recent scan jobs, ordered by id DESC.
-func (r *ScanJobRepo) List(limit, offset int) ([]ListEntry, error) {
-	rows, err := r.DB.Query(
+func (r *ScanJobRepo) List(ctx context.Context, limit, offset int) ([]ListEntry, error) {
+	rows, err := r.DB.QueryContext(ctx,
 		`SELECT id, target, status, started_at FROM scan_jobs ORDER BY id DESC LIMIT $1 OFFSET $2`,
 		limit, offset,
 	)

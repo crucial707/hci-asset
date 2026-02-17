@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -27,12 +28,12 @@ func NewAssetRepo(db *sql.DB) *AssetRepo {
 // ==========================
 // Create a new asset
 // ==========================
-func (r *AssetRepo) Create(name, description string, tags []string) (*models.Asset, error) {
+func (r *AssetRepo) Create(ctx context.Context, name, description string, tags []string) (*models.Asset, error) {
 	if tags == nil {
 		tags = []string{}
 	}
 	var id int
-	err := r.db.QueryRow(
+	err := r.db.QueryRowContext(ctx,
 		"INSERT INTO assets (name, description, tags) VALUES ($1, $2, $3) RETURNING id",
 		name, description, pq.Array(tags),
 	).Scan(&id)
@@ -50,10 +51,10 @@ func (r *AssetRepo) Create(name, description string, tags []string) (*models.Ass
 // ==========================
 // Find asset by name
 // ==========================
-func (r *AssetRepo) FindByName(name string) (*models.Asset, error) {
+func (r *AssetRepo) FindByName(ctx context.Context, name string) (*models.Asset, error) {
 	var a models.Asset
 	var lastSeen sql.NullTime
-	err := r.db.QueryRow(
+	err := r.db.QueryRowContext(ctx,
 		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen FROM assets WHERE name=$1",
 		name,
 	).Scan(&a.ID, &a.Name, &a.Description, pq.Array(&a.Tags), &lastSeen)
@@ -74,12 +75,12 @@ func (r *AssetRepo) FindByName(name string) (*models.Asset, error) {
 // ==========================
 // UpsertDiscovered either finds an existing asset by name or creates it.
 // This is primarily used by scan jobs to avoid duplicating assets.
-func (r *AssetRepo) UpsertDiscovered(name, description string) (*models.Asset, error) {
-	a, err := r.FindByName(name)
+func (r *AssetRepo) UpsertDiscovered(ctx context.Context, name, description string) (*models.Asset, error) {
+	a, err := r.FindByName(ctx, name)
 	if err == nil {
 		// Optionally update description if it has changed, but avoid errors
 		if a.Description != description {
-			updated, updateErr := r.Update(a.ID, a.Name, description, a.Tags)
+			updated, updateErr := r.Update(ctx, a.ID, a.Name, description, a.Tags)
 			if updateErr == nil {
 				return updated, nil
 			}
@@ -89,7 +90,7 @@ func (r *AssetRepo) UpsertDiscovered(name, description string) (*models.Asset, e
 
 	// If not found, create a new asset
 	if errors.Is(err, ErrAssetNotFound) {
-		return r.Create(name, description, nil)
+		return r.Create(ctx, name, description, nil)
 	}
 
 	return nil, err
@@ -98,8 +99,8 @@ func (r *AssetRepo) UpsertDiscovered(name, description string) (*models.Asset, e
 // ==========================
 // List assets with pagination
 // ==========================
-func (r *AssetRepo) List(limit, offset int) ([]models.Asset, error) {
-	rows, err := r.db.Query(
+func (r *AssetRepo) List(ctx context.Context, limit, offset int) ([]models.Asset, error) {
+	rows, err := r.db.QueryContext(ctx,
 		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen FROM assets ORDER BY id LIMIT $1 OFFSET $2",
 		limit, offset,
 	)
@@ -111,8 +112,8 @@ func (r *AssetRepo) List(limit, offset int) ([]models.Asset, error) {
 }
 
 // ListByTag returns assets that have the given tag.
-func (r *AssetRepo) ListByTag(tag string, limit, offset int) ([]models.Asset, error) {
-	rows, err := r.db.Query(
+func (r *AssetRepo) ListByTag(ctx context.Context, tag string, limit, offset int) ([]models.Asset, error) {
+	rows, err := r.db.QueryContext(ctx,
 		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen FROM assets WHERE $1 = ANY(COALESCE(tags, '{}')) ORDER BY id LIMIT $2 OFFSET $3",
 		tag, limit, offset,
 	)
@@ -142,9 +143,9 @@ func (r *AssetRepo) scanAssetRows(rows *sql.Rows) ([]models.Asset, error) {
 // ==========================
 // Search assets with pagination
 // ==========================
-func (r *AssetRepo) Search(query string, limit, offset int) ([]models.Asset, error) {
+func (r *AssetRepo) Search(ctx context.Context, query string, limit, offset int) ([]models.Asset, error) {
 	likeQuery := "%" + strings.ToLower(query) + "%"
-	rows, err := r.db.Query(
+	rows, err := r.db.QueryContext(ctx,
 		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen FROM assets WHERE LOWER(name) LIKE $1 OR LOWER(description) LIKE $1 ORDER BY id LIMIT $2 OFFSET $3",
 		likeQuery, limit, offset,
 	)
@@ -158,10 +159,10 @@ func (r *AssetRepo) Search(query string, limit, offset int) ([]models.Asset, err
 // ==========================
 // Get an asset by ID
 // ==========================
-func (r *AssetRepo) Get(id int) (*models.Asset, error) {
+func (r *AssetRepo) Get(ctx context.Context, id int) (*models.Asset, error) {
 	var a models.Asset
 	var lastSeen sql.NullTime
-	err := r.db.QueryRow(
+	err := r.db.QueryRowContext(ctx,
 		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen FROM assets WHERE id=$1", id,
 	).Scan(&a.ID, &a.Name, &a.Description, pq.Array(&a.Tags), &lastSeen)
 	if err != nil {
@@ -179,8 +180,8 @@ func (r *AssetRepo) Get(id int) (*models.Asset, error) {
 // ==========================
 // Heartbeat updates last_seen for an asset (e.g. agent check-in).
 // ==========================
-func (r *AssetRepo) Heartbeat(id int) (*models.Asset, error) {
-	res, err := r.db.Exec("UPDATE assets SET last_seen = NOW() WHERE id = $1", id)
+func (r *AssetRepo) Heartbeat(ctx context.Context, id int) (*models.Asset, error) {
+	res, err := r.db.ExecContext(ctx, "UPDATE assets SET last_seen = NOW() WHERE id = $1", id)
 	if err != nil {
 		return nil, err
 	}
@@ -191,17 +192,17 @@ func (r *AssetRepo) Heartbeat(id int) (*models.Asset, error) {
 	if rowsAffected == 0 {
 		return nil, fmt.Errorf("asset not found")
 	}
-	return r.Get(id)
+	return r.Get(ctx, id)
 }
 
 // ==========================
 // Update an asset by ID
 // ==========================
-func (r *AssetRepo) Update(id int, name, description string, tags []string) (*models.Asset, error) {
+func (r *AssetRepo) Update(ctx context.Context, id int, name, description string, tags []string) (*models.Asset, error) {
 	if tags == nil {
 		tags = []string{}
 	}
-	res, err := r.db.Exec(
+	res, err := r.db.ExecContext(ctx,
 		"UPDATE assets SET name=$1, description=$2, tags=$3 WHERE id=$4",
 		name, description, pq.Array(tags), id,
 	)
@@ -215,14 +216,14 @@ func (r *AssetRepo) Update(id int, name, description string, tags []string) (*mo
 	if rowsAffected == 0 {
 		return nil, fmt.Errorf("asset not found")
 	}
-	return r.Get(id)
+	return r.Get(ctx, id)
 }
 
 // ==========================
 // Delete an asset by ID
 // ==========================
-func (r *AssetRepo) Delete(id int) error {
-	res, err := r.db.Exec("DELETE FROM assets WHERE id=$1", id)
+func (r *AssetRepo) Delete(ctx context.Context, id int) error {
+	res, err := r.db.ExecContext(ctx, "DELETE FROM assets WHERE id=$1", id)
 	if err != nil {
 		return err
 	}

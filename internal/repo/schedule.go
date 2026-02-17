@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"context"
 	"database/sql"
 
 	"github.com/crucial707/hci-asset/internal/models"
@@ -17,14 +18,14 @@ func NewScheduleRepo(db *sql.DB) *ScheduleRepo {
 }
 
 // List returns schedules, most recent first. limit/offset for pagination.
-func (r *ScheduleRepo) List(limit, offset int) ([]models.Schedule, error) {
+func (r *ScheduleRepo) List(ctx context.Context, limit, offset int) ([]models.Schedule, error) {
 	query := `
 		SELECT id, target, cron_expr, enabled, created_at
 		FROM scan_schedules
 		ORDER BY id DESC
 		LIMIT $1 OFFSET $2
 	`
-	rows, err := r.DB.Query(query, limit, offset)
+	rows, err := r.DB.QueryContext(ctx, query, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -42,14 +43,14 @@ func (r *ScheduleRepo) List(limit, offset int) ([]models.Schedule, error) {
 }
 
 // ListEnabled returns all enabled schedules (for the cron runner).
-func (r *ScheduleRepo) ListEnabled() ([]models.Schedule, error) {
+func (r *ScheduleRepo) ListEnabled(ctx context.Context) ([]models.Schedule, error) {
 	query := `
 		SELECT id, target, cron_expr, enabled, created_at
 		FROM scan_schedules
 		WHERE enabled = true
 		ORDER BY id
 	`
-	rows, err := r.DB.Query(query)
+	rows, err := r.DB.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -67,14 +68,14 @@ func (r *ScheduleRepo) ListEnabled() ([]models.Schedule, error) {
 }
 
 // GetByID returns one schedule by id.
-func (r *ScheduleRepo) GetByID(id int) (*models.Schedule, error) {
+func (r *ScheduleRepo) GetByID(ctx context.Context, id int) (*models.Schedule, error) {
 	query := `
 		SELECT id, target, cron_expr, enabled, created_at
 		FROM scan_schedules
 		WHERE id = $1
 	`
 	s := &models.Schedule{}
-	err := r.DB.QueryRow(query, id).Scan(&s.ID, &s.Target, &s.CronExpr, &s.Enabled, &s.CreatedAt)
+	err := r.DB.QueryRowContext(ctx, query, id).Scan(&s.ID, &s.Target, &s.CronExpr, &s.Enabled, &s.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -85,14 +86,14 @@ func (r *ScheduleRepo) GetByID(id int) (*models.Schedule, error) {
 }
 
 // Create inserts a new schedule and returns it with id set.
-func (r *ScheduleRepo) Create(target, cronExpr string, enabled bool) (*models.Schedule, error) {
+func (r *ScheduleRepo) Create(ctx context.Context, target, cronExpr string, enabled bool) (*models.Schedule, error) {
 	query := `
 		INSERT INTO scan_schedules (target, cron_expr, enabled)
 		VALUES ($1, $2, $3)
 		RETURNING id, target, cron_expr, enabled, created_at
 	`
 	s := &models.Schedule{}
-	err := r.DB.QueryRow(query, target, cronExpr, enabled).
+	err := r.DB.QueryRowContext(ctx, query, target, cronExpr, enabled).
 		Scan(&s.ID, &s.Target, &s.CronExpr, &s.Enabled, &s.CreatedAt)
 	if err != nil {
 		return nil, err
@@ -101,8 +102,8 @@ func (r *ScheduleRepo) Create(target, cronExpr string, enabled bool) (*models.Sc
 }
 
 // Update updates target, cron_expr, and enabled for the given id.
-func (r *ScheduleRepo) Update(id int, target, cronExpr string, enabled bool) error {
-	_, err := r.DB.Exec(
+func (r *ScheduleRepo) Update(ctx context.Context, id int, target, cronExpr string, enabled bool) error {
+	_, err := r.DB.ExecContext(ctx,
 		`UPDATE scan_schedules SET target = $1, cron_expr = $2, enabled = $3 WHERE id = $4`,
 		target, cronExpr, enabled, id,
 	)
@@ -110,7 +111,7 @@ func (r *ScheduleRepo) Update(id int, target, cronExpr string, enabled bool) err
 }
 
 // Delete removes a schedule by id.
-func (r *ScheduleRepo) Delete(id int) error {
-	_, err := r.DB.Exec(`DELETE FROM scan_schedules WHERE id = $1`, id)
+func (r *ScheduleRepo) Delete(ctx context.Context, id int) error {
+	_, err := r.DB.ExecContext(ctx, `DELETE FROM scan_schedules WHERE id = $1`, id)
 	return err
 }

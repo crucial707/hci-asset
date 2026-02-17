@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"os/exec"
@@ -51,7 +52,7 @@ func (h *ScanHandler) StartScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jobID := h.StartScanTarget(input.Target)
+	jobID := h.StartScanTarget(r.Context(), input.Target)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"job_id": jobID,
@@ -61,8 +62,8 @@ func (h *ScanHandler) StartScan(w http.ResponseWriter, r *http.Request) {
 
 // StartScanTarget starts a scan for the given target and returns the job ID.
 // Used by the API (StartScan) and by the schedule runner. Persists the job to DB.
-func (h *ScanHandler) StartScanTarget(target string) string {
-	id, err := h.ScanJobRepo.Create(target)
+func (h *ScanHandler) StartScanTarget(ctx context.Context, target string) string {
+	id, err := h.ScanJobRepo.Create(ctx, target)
 	if err != nil {
 		// Fallback to in-memory-only id if DB fails (e.g. table missing)
 		h.scanJobsMu.Lock()
@@ -99,9 +100,9 @@ func (h *ScanHandler) StartScanTarget(target string) string {
 // ==========================
 func (h *ScanHandler) ListScans(w http.ResponseWriter, r *http.Request) {
 	const maxRecent = 20
-	list, err := h.ScanJobRepo.List(maxRecent, 0)
+	list, err := h.ScanJobRepo.List(r.Context(), maxRecent, 0)
 	if err != nil {
-		JSONError(w, "failed to list scans", http.StatusInternalServerError)
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -140,7 +141,7 @@ func (h *ScanHandler) GetScanStatus(w http.ResponseWriter, r *http.Request) {
 		JSONError(w, "scan job not found", http.StatusNotFound)
 		return
 	}
-	row, err := h.ScanJobRepo.GetByID(id)
+	row, err := h.ScanJobRepo.GetByID(r.Context(), id)
 	if err != nil || row == nil {
 		JSONError(w, "scan job not found", http.StatusNotFound)
 		return
@@ -182,6 +183,7 @@ func (h *ScanHandler) CancelScan(w http.ResponseWriter, r *http.Request) {
 // Internal Scan Executor (persists result to DB when jobID is numeric).
 // ==========================
 func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
+	ctx := context.Background()
 	h.scanJobsMu.Lock()
 	job := h.scanJobs[jobID]
 	h.scanJobsMu.Unlock()
@@ -191,7 +193,7 @@ func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 		if err != nil {
 			return // fallback in-memory job (e.g. "3-mem"), skip persist
 		}
-		_ = h.ScanJobRepo.Update(id, job.Status, job.CompletedAt, job.Error, job.Assets)
+		_ = h.ScanJobRepo.Update(ctx, id, job.Status, job.CompletedAt, job.Error, job.Assets)
 	}
 
 	nmapExe := h.NmapPath
@@ -244,7 +246,7 @@ func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 				displayName = ip
 			}
 
-			asset, err := h.Repo.UpsertDiscovered(displayName, desc)
+			asset, err := h.Repo.UpsertDiscovered(ctx, displayName, desc)
 			if err != nil {
 				if job.Error == "" {
 					job.Error = "one or more assets failed to upsert"

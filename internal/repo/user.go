@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 
@@ -25,7 +26,7 @@ func NewUserRepo(db *sql.DB) *UserRepo {
 // ==========================
 // Create User (password optional for viewer; required for admin; stored as bcrypt hash when set)
 // ==========================
-func (r *UserRepo) Create(username string, password string, role string) (*models.User, error) {
+func (r *UserRepo) Create(ctx context.Context, username string, password string, role string) (*models.User, error) {
 	if role == "" {
 		role = models.RoleViewer
 	}
@@ -43,7 +44,7 @@ func (r *UserRepo) Create(username string, password string, role string) (*model
 		RETURNING id, username, role
 	`
 	user := &models.User{}
-	err := r.DB.QueryRow(query, username, hash, role).
+	err := r.DB.QueryRowContext(ctx, query, username, hash, role).
 		Scan(&user.ID, &user.Username, &user.Role)
 	if err != nil {
 		return nil, err
@@ -54,7 +55,7 @@ func (r *UserRepo) Create(username string, password string, role string) (*model
 // ==========================
 // Get By ID
 // ==========================
-func (r *UserRepo) GetByID(id int) (*models.User, error) {
+func (r *UserRepo) GetByID(ctx context.Context, id int) (*models.User, error) {
 	query := `
 		SELECT id, username, password_hash, role
 		FROM users
@@ -62,7 +63,7 @@ func (r *UserRepo) GetByID(id int) (*models.User, error) {
 	`
 	user := &models.User{}
 	var pwHash sql.NullString
-	err := r.DB.QueryRow(query, id).
+	err := r.DB.QueryRowContext(ctx, query, id).
 		Scan(&user.ID, &user.Username, &pwHash, &user.Role)
 	if err != nil {
 		return nil, err
@@ -76,7 +77,7 @@ func (r *UserRepo) GetByID(id int) (*models.User, error) {
 // ==========================
 // Get By Username (includes password_hash for login verification)
 // ==========================
-func (r *UserRepo) GetByUsername(username string) (*models.User, error) {
+func (r *UserRepo) GetByUsername(ctx context.Context, username string) (*models.User, error) {
 	query := `
 		SELECT id, username, password_hash, role
 		FROM users
@@ -84,7 +85,7 @@ func (r *UserRepo) GetByUsername(username string) (*models.User, error) {
 	`
 	user := &models.User{}
 	var pwHash sql.NullString
-	err := r.DB.QueryRow(query, username).
+	err := r.DB.QueryRowContext(ctx, query, username).
 		Scan(&user.ID, &user.Username, &pwHash, &user.Role)
 	if err != nil {
 		return nil, err
@@ -98,7 +99,7 @@ func (r *UserRepo) GetByUsername(username string) (*models.User, error) {
 // ==========================
 // Update User
 // ==========================
-func (r *UserRepo) Update(id int, username string) (*models.User, error) {
+func (r *UserRepo) Update(ctx context.Context, id int, username string) (*models.User, error) {
 	query := `
 		UPDATE users
 		SET username = $1
@@ -107,7 +108,7 @@ func (r *UserRepo) Update(id int, username string) (*models.User, error) {
 	`
 	user := &models.User{}
 	var pwHash sql.NullString
-	err := r.DB.QueryRow(query, username, id).
+	err := r.DB.QueryRowContext(ctx, query, username, id).
 		Scan(&user.ID, &user.Username, &pwHash, &user.Role)
 	if err != nil {
 		return nil, err
@@ -121,8 +122,8 @@ func (r *UserRepo) Update(id int, username string) (*models.User, error) {
 // ==========================
 // Delete User
 // ==========================
-func (r *UserRepo) Delete(id int) error {
-	result, err := r.DB.Exec(`DELETE FROM users WHERE id = $1`, id)
+func (r *UserRepo) Delete(ctx context.Context, id int) error {
+	result, err := r.DB.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, id)
 	if err != nil {
 		return err
 	}
@@ -142,8 +143,8 @@ func (r *UserRepo) Delete(id int) error {
 // ==========================
 // List Users (password_hash not returned in list)
 // ==========================
-func (r *UserRepo) List() ([]models.User, error) {
-	rows, err := r.DB.Query(`SELECT id, username, password_hash, role FROM users ORDER BY id`)
+func (r *UserRepo) List(ctx context.Context) ([]models.User, error) {
+	rows, err := r.DB.QueryContext(ctx, `SELECT id, username, password_hash, role FROM users ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
