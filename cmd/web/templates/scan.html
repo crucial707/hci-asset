@@ -1,6 +1,7 @@
-{{define "title"}}Scans{{end}}
+{{define "title"}}Active Scans{{end}}
 {{define "content"}}
-<h1>Network scan</h1>
+<h1>Active Scans</h1>
+<p>Start a one-off scan or run a <a href="/saved-scans">saved scan</a>. Clear the list below to start fresh.</p>
 {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
 <form method="post" action="/scans">
   <label for="target">Target (IP, range, or CIDR)</label>
@@ -8,7 +9,10 @@
   <button type="submit">Start scan</button>
 </form>
 {{if .Scans}}
-<h2>Recent scans</h2>
+<h2>Scan list</h2>
+<form method="post" action="/scans/clear" onsubmit="return confirm('Remove all scan jobs from this list? Running scans will finish but disappear from the list.');">
+  <button type="submit">Clear all scans</button>
+</form>
 <table>
   <thead><tr><th>Job</th><th>Target</th><th>Status</th><th>Started</th><th></th></tr></thead>
   <tbody>
@@ -22,6 +26,6 @@
   </tbody>
 </table>
 {{else}}
-<p>No scans yet. Start one above; recent scans will appear here.</p>
+<p>No scans in the list. Start one above or run a saved scan; use &quot;Clear all scans&quot; to empty this list anytime.</p>
 {{end}}
 {{end}}

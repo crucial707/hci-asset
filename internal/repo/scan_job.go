@@ -135,3 +135,9 @@ func (r *ScanJobRepo) List(ctx context.Context, limit, offset int) ([]ListEntry,
 	}
 	return list, rows.Err()
 }
+
+// DeleteAll removes all scan job records (used to clear the active scans list).
+func (r *ScanJobRepo) DeleteAll(ctx context.Context) error {
+	_, err := r.DB.ExecContext(ctx, "DELETE FROM scan_jobs")
+	return err
+}

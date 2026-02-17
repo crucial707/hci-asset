@@ -74,12 +74,23 @@ func main() {
 		r.Post("/users", userCreate(apiBase))
 		r.Get("/users/{id}/edit", userEditForm(apiBase))
 		r.Post("/users/{id}/edit", userUpdate(apiBase))
+		r.Get("/users/{id}/change-password", userChangePasswordForm(apiBase))
+		r.Post("/users/{id}/change-password", userChangePassword(apiBase))
 		r.Get("/users/{id}/delete", userDeleteConfirm(apiBase))
 		r.Post("/users/{id}/delete", userDelete(apiBase))
 		r.Get("/scans", scanPage(apiBase))
 		r.Post("/scans", startScan(apiBase))
+		r.Post("/scans/clear", clearScans(apiBase))
 		r.Get("/scans/{id}", scanDetail(apiBase))
 		r.Post("/scans/{id}/cancel", cancelScan(apiBase))
+		r.Get("/saved-scans", savedScansList(apiBase))
+		r.Get("/saved-scans/new", savedScanNewForm(apiBase))
+		r.Post("/saved-scans", savedScanCreate(apiBase))
+		r.Get("/saved-scans/{id}/edit", savedScanEditForm(apiBase))
+		r.Post("/saved-scans/{id}/edit", savedScanUpdate(apiBase))
+		r.Post("/saved-scans/{id}/run", savedScanRun(apiBase))
+		r.Get("/saved-scans/{id}/delete", savedScanDeleteConfirm(apiBase))
+		r.Post("/saved-scans/{id}/delete", savedScanDelete(apiBase))
 		r.Get("/schedules", schedulesList(apiBase))
 		r.Get("/schedules/new", scheduleCreateForm(apiBase))
 		r.Post("/schedules", scheduleCreate(apiBase))
@@ -958,6 +969,312 @@ func cancelScan(apiBase string) http.HandlerFunc {
 	}
 }
 
+func clearScans(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+		_, status, err := apiDelete(apiBase, "/scans", tok)
+		if err != nil {
+			http.Redirect(w, r, "/scans?error="+url.QueryEscape(err.Error()), http.StatusFound)
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
+		if status != http.StatusNoContent {
+			http.Redirect(w, r, "/scans?error=Failed+to+clear+scans", http.StatusFound)
+			return
+		}
+		http.Redirect(w, r, "/scans", http.StatusFound)
+	}
+}
+
+// ====== Saved Scans (Web UI) ======
+
+func savedScansList(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+		data, status, err := apiGet(apiBase, "/saved-scans", tok)
+		if err != nil {
+			renderTemplate(w, "saved_scans.html", map[string]interface{}{"Error": err.Error()})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
+		if status != http.StatusOK {
+			renderTemplate(w, "saved_scans.html", map[string]interface{}{"Error": "API error: " + string(data)})
+			return
+		}
+		var listResp struct {
+			Items []struct {
+				ID        int    `json:"id"`
+				Name      string `json:"name"`
+				Target    string `json:"target"`
+				CreatedAt string `json:"created_at"`
+			} `json:"items"`
+		}
+		if err := json.Unmarshal(data, &listResp); err != nil {
+			renderTemplate(w, "saved_scans.html", map[string]interface{}{"Error": "Invalid response"})
+			return
+		}
+		renderTemplate(w, "saved_scans.html", map[string]interface{}{
+			"SavedScans": listResp.Items,
+		})
+	}
+}
+
+func savedScanNewForm(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		renderTemplate(w, "saved_scan_form.html", map[string]interface{}{
+			"FormAction":  "/saved-scans",
+			"SubmitLabel": "Save scan",
+		})
+	}
+}
+
+func savedScanCreate(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
+		name := strings.TrimSpace(r.FormValue("name"))
+		target := strings.TrimSpace(r.FormValue("target"))
+		if name == "" || target == "" {
+			renderTemplate(w, "saved_scan_form.html", map[string]interface{}{
+				"Error":       "Name and target are required",
+				"FormAction":  "/saved-scans",
+				"SubmitLabel": "Save scan",
+				"Name":        name,
+				"Target":      target,
+			})
+			return
+		}
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+		body, _ := json.Marshal(map[string]string{"name": name, "target": target})
+		data, status, err := apiPost(apiBase, "/saved-scans", tok, body)
+		if err != nil {
+			renderTemplate(w, "saved_scan_form.html", map[string]interface{}{
+				"Error": err.Error(), "FormAction": "/saved-scans", "SubmitLabel": "Save scan", "Name": name, "Target": target,
+			})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
+		if status < 200 || status >= 300 {
+			var errResp struct{ Error string }
+			_ = json.Unmarshal(data, &errResp)
+			msg := errResp.Error
+			if msg == "" {
+				msg = string(data)
+			}
+			renderTemplate(w, "saved_scan_form.html", map[string]interface{}{
+				"Error": "API: " + msg, "FormAction": "/saved-scans", "SubmitLabel": "Save scan", "Name": name, "Target": target,
+			})
+			return
+		}
+		http.Redirect(w, r, "/saved-scans", http.StatusFound)
+	}
+}
+
+func savedScanEditForm(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+		data, status, err := apiGet(apiBase, "/saved-scans/"+id, tok)
+		if err != nil {
+			renderTemplate(w, "saved_scan_form.html", map[string]interface{}{"Error": err.Error(), "FormAction": "/saved-scans/" + id + "/edit", "SubmitLabel": "Save changes"})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
+		if status != http.StatusOK {
+			renderTemplate(w, "saved_scan_form.html", map[string]interface{}{"Error": "Saved scan not found", "FormAction": "/saved-scans/" + id + "/edit", "SubmitLabel": "Save changes"})
+			return
+		}
+		var saved struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+			Target string `json:"target"`
+		}
+		if err := json.Unmarshal(data, &saved); err != nil {
+			renderTemplate(w, "saved_scan_form.html", map[string]interface{}{"Error": "Invalid response"})
+			return
+		}
+		renderTemplate(w, "saved_scan_form.html", map[string]interface{}{
+			"Saved":      saved,
+			"FormAction": "/saved-scans/" + id + "/edit",
+			"SubmitLabel": "Save changes",
+		})
+	}
+}
+
+func savedScanUpdate(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
+		name := strings.TrimSpace(r.FormValue("name"))
+		target := strings.TrimSpace(r.FormValue("target"))
+		if name == "" || target == "" {
+			renderTemplate(w, "saved_scan_form.html", map[string]interface{}{
+				"Error": "Name and target are required",
+				"Saved": map[string]interface{}{"ID": id, "Name": name, "Target": target},
+				"FormAction": "/saved-scans/" + id + "/edit",
+				"SubmitLabel": "Save changes",
+			})
+			return
+		}
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+		body, _ := json.Marshal(map[string]string{"name": name, "target": target})
+		data, status, err := apiPut(apiBase, "/saved-scans/"+id, tok, body)
+		if err != nil {
+			renderTemplate(w, "saved_scan_form.html", map[string]interface{}{
+				"Error": err.Error(), "Saved": map[string]interface{}{"ID": id, "Name": name, "Target": target},
+				"FormAction": "/saved-scans/" + id + "/edit", "SubmitLabel": "Save changes",
+			})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
+		if status < 200 || status >= 300 {
+			var errResp struct{ Error string }
+			_ = json.Unmarshal(data, &errResp)
+			msg := errResp.Error
+			if msg == "" {
+				msg = string(data)
+			}
+			renderTemplate(w, "saved_scan_form.html", map[string]interface{}{
+				"Error": "API: " + msg, "Saved": map[string]interface{}{"ID": id, "Name": name, "Target": target},
+				"FormAction": "/saved-scans/" + id + "/edit", "SubmitLabel": "Save changes",
+			})
+			return
+		}
+		http.Redirect(w, r, "/saved-scans", http.StatusFound)
+	}
+}
+
+func savedScanRun(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+		data, status, err := apiPost(apiBase, "/saved-scans/"+id+"/run", tok, []byte("{}"))
+		if err != nil {
+			http.Redirect(w, r, "/saved-scans?error="+url.QueryEscape(err.Error()), http.StatusFound)
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
+		if status != http.StatusOK {
+			http.Redirect(w, r, "/saved-scans?error=Failed+to+start+scan", http.StatusFound)
+			return
+		}
+		var out struct {
+			JobID string `json:"job_id"`
+		}
+		if err := json.Unmarshal(data, &out); err == nil && out.JobID != "" {
+			http.Redirect(w, r, "/scans/"+out.JobID, http.StatusFound)
+			return
+		}
+		http.Redirect(w, r, "/scans", http.StatusFound)
+	}
+}
+
+func savedScanDeleteConfirm(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+		data, status, err := apiGet(apiBase, "/saved-scans/"+id, tok)
+		if err != nil || status != http.StatusOK {
+			renderTemplate(w, "saved_scan_delete_confirm.html", map[string]interface{}{"Error": "Saved scan not found", "Saved": map[string]interface{}{"ID": id, "Name": "", "Target": ""}})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
+		var saved struct {
+			ID     int    `json:"id"`
+			Name   string `json:"name"`
+			Target string `json:"target"`
+		}
+		if err := json.Unmarshal(data, &saved); err != nil {
+			renderTemplate(w, "saved_scan_delete_confirm.html", map[string]interface{}{"Error": "Invalid response"})
+			return
+		}
+		renderTemplate(w, "saved_scan_delete_confirm.html", map[string]interface{}{"Saved": saved})
+	}
+}
+
+func savedScanDelete(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+		_, status, err := apiDelete(apiBase, "/saved-scans/"+id, tok)
+		if err != nil {
+			renderTemplate(w, "saved_scan_delete_confirm.html", map[string]interface{}{"Error": err.Error(), "Saved": map[string]interface{}{"ID": id}})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
+		if status == http.StatusNoContent {
+			http.Redirect(w, r, "/saved-scans", http.StatusFound)
+			return
+		}
+		http.Redirect(w, r, "/saved-scans", http.StatusFound)
+	}
+}
+
 // ====== Schedules (Web UI) ======
 
 func schedulesList(apiBase string) http.HandlerFunc {
@@ -1513,6 +1830,108 @@ func userUpdate(apiBase string) http.HandlerFunc {
 		}
 
 		http.Redirect(w, r, "/users", http.StatusFound)
+	}
+}
+
+func userChangePasswordForm(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		data, status, err := apiGet(apiBase, "/users/"+id, tok)
+		if err != nil {
+			renderTemplate(w, "user_change_password.html", map[string]interface{}{"Error": err.Error(), "User": map[string]interface{}{"ID": id, "Username": ""}})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
+		if status != http.StatusOK {
+			renderTemplate(w, "user_change_password.html", map[string]interface{}{"Error": "User not found or API error", "User": map[string]interface{}{"ID": id, "Username": ""}})
+			return
+		}
+
+		var user struct {
+			ID       int    `json:"id"`
+			Username string `json:"username"`
+		}
+		if err := json.Unmarshal(data, &user); err != nil {
+			renderTemplate(w, "user_change_password.html", map[string]interface{}{"Error": "Invalid user response", "User": map[string]interface{}{"ID": id, "Username": ""}})
+			return
+		}
+
+		renderTemplate(w, "user_change_password.html", map[string]interface{}{
+			"User": user,
+		})
+	}
+}
+
+func userChangePassword(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
+		currentPassword := r.FormValue("current_password")
+		newPassword := r.FormValue("new_password")
+		confirmPassword := r.FormValue("confirm_password")
+
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		payload := func(errMsg string) map[string]interface{} {
+			user := map[string]interface{}{"ID": id, "Username": ""}
+			if data, st, _ := apiGet(apiBase, "/users/"+id, tok); st == http.StatusOK {
+				var u struct { ID int `json:"id"`; Username string `json:"username"` }
+				_ = json.Unmarshal(data, &u)
+				user["ID"], user["Username"] = u.ID, u.Username
+			}
+			return map[string]interface{}{"Error": errMsg, "User": user}
+		}
+
+		if newPassword == "" {
+			renderTemplate(w, "user_change_password.html", payload("New password is required"))
+			return
+		}
+		if newPassword != confirmPassword {
+			renderTemplate(w, "user_change_password.html", payload("New password and confirmation do not match"))
+			return
+		}
+
+		body, _ := json.Marshal(map[string]string{
+			"current_password": currentPassword,
+			"new_password":     newPassword,
+		})
+		data, status, err := apiPut(apiBase, "/users/"+id+"/password", tok, body)
+		if err != nil {
+			renderTemplate(w, "user_change_password.html", payload(err.Error()))
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r)
+			return
+		}
+		if status != http.StatusNoContent {
+			var errResp struct{ Error string }
+			_ = json.Unmarshal(data, &errResp)
+			msg := errResp.Error
+			if msg == "" {
+				msg = string(data)
+			}
+			renderTemplate(w, "user_change_password.html", payload("API: "+msg))
+			return
+		}
+
+		http.Redirect(w, r, "/users/"+id+"/edit", http.StatusFound)
 	}
 }
 

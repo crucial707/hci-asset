@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS saved_scans (
+  id         SERIAL PRIMARY KEY,
+  name       VARCHAR(255) NOT NULL,
+  target     VARCHAR(255) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

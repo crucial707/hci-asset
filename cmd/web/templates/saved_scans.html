@@ -1,0 +1,27 @@
+{{define "title"}}Saved Scans{{end}}
+{{define "content"}}
+<h1>Saved Scans</h1>
+<p>Name and save scan targets, then run them from here. The scan will appear on <a href="/scans">Active Scans</a>.</p>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+<p><a href="/saved-scans/new">+ Add saved scan</a></p>
+{{if .SavedScans}}
+<table>
+  <thead><tr><th>Name</th><th>Target</th><th></th></tr></thead>
+  <tbody>
+  {{range .SavedScans}}<tr>
+    <td>{{.Name}}</td>
+    <td>{{.Target}}</td>
+    <td>
+      <form method="post" action="/saved-scans/{{.ID}}/run" style="display:inline;">
+        <button type="submit">Run</button>
+      </form>
+      · <a href="/saved-scans/{{.ID}}/edit">Edit</a>
+      · <a href="/saved-scans/{{.ID}}/delete">Delete</a>
+    </td>
+  </tr>{{end}}
+  </tbody>
+</table>
+{{else}}
+<p>No saved scans. <a href="/saved-scans/new">Add one</a> to name a target (e.g. &quot;Office LAN&quot; → 192.168.1.0/24) and run it anytime.</p>
+{{end}}
+{{end}}

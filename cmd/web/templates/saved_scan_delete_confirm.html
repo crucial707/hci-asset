@@ -1,0 +1,12 @@
+{{define "title"}}Delete saved scan{{end}}
+{{define "content"}}
+<h1>Delete saved scan</h1>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+{{if .Saved}}
+<p>Delete &quot;{{.Saved.Name}}&quot; (target: {{.Saved.Target}})? This does not delete any scan results.</p>
+<form method="post" action="/saved-scans/{{.Saved.ID}}/delete">
+  <button type="submit">Delete</button>
+</form>
+{{end}}
+<p><a href="/saved-scans">← Saved Scans</a></p>
+{{end}}

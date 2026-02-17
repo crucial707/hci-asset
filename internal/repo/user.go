@@ -140,6 +140,12 @@ func (r *UserRepo) Delete(ctx context.Context, id int) error {
 	return nil
 }
 
+// SetPasswordHash sets the password hash for the given user ID (used by change-password flow).
+func (r *UserRepo) SetPasswordHash(ctx context.Context, id int, newHash string) error {
+	_, err := r.DB.ExecContext(ctx, `UPDATE users SET password_hash = $1 WHERE id = $2`, newHash, id)
+	return err
+}
+
 // Count returns the total number of users.
 func (r *UserRepo) Count(ctx context.Context) (int, error) {
 	var n int

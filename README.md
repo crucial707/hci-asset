@@ -89,7 +89,7 @@ When using **docker-compose**, Postgres is created with database `assetdb`, user
 - **Skip migrations**: Set env `SKIP_MIGRATIONS=1` if you run migrations separately (e.g. from a job or CLI). The API will then assume the schema is already up to date.
 - **Existing installs**: If you previously created tables manually (before this migration runner), back up your data before starting the API with migrations enabled, or set `SKIP_MIGRATIONS=1` until you are ready.
 - **Auth**: Users have a `role` (`viewer` or `admin`). Only **viewer** can log in without a password; **admin** requires a password. The `users` table has `role` and optional `password_hash`.
-- **Existing users without a role / setting admin**: The Web UI **Users** page shows each user’s role and lets you change it (Edit → set Role to Admin). You can also set an existing user to admin via SQL (e.g. in the postgres container):  
+do- **Existing users without a role / setting admin**: The Web UI **Users** page shows each user’s role and lets you change it (Edit → set Role to Admin). You can also set an existing user to admin via SQL (e.g. in the postgres container):  
   `UPDATE users SET role = 'admin' WHERE username = 'admin';`  
   **Admin users must have a password.** If that user has no password yet, set a bcrypt hash in the DB or create a new admin via Register with username, password, and role `admin`.
 

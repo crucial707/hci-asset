@@ -115,9 +115,11 @@ func newRouter(db *sql.DB, cfg config.Config) (*chi.Mux, *handlers.ScanHandler, 
 	auditRepo := repo.NewAuditRepo(db)
 	scheduleRepo := repo.NewScheduleRepo(db)
 	scanJobRepo := repo.NewScanJobRepo(db)
+	savedScanRepo := repo.NewSavedScanRepo(db)
 
 	assetHandler := &handlers.AssetHandler{Repo: assetRepo, AuditRepo: auditRepo}
 	scanHandler := &handlers.ScanHandler{Repo: assetRepo, ScanJobRepo: scanJobRepo, NmapPath: cfg.NmapPath}
+	savedScanHandler := &handlers.SavedScanHandler{Repo: savedScanRepo, ScanHandler: scanHandler}
 	userHandler := &handlers.UserHandler{Repo: userRepo, AuditRepo: auditRepo}
 	auditHandler := &handlers.AuditHandler{Repo: auditRepo}
 	scheduleHandler := &handlers.ScheduleHandler{Repo: scheduleRepo}
@@ -174,6 +176,8 @@ func newRouter(db *sql.DB, cfg config.Config) (*chi.Mux, *handlers.ScanHandler, 
 		r.With(jwtMiddleware).Get("/scan/{id}", scanHandler.GetScanStatus)
 		r.With(jwtMiddleware).Get("/scans", scanHandler.ListScans)
 		r.With(jwtMiddleware).Get("/scans/{id}", scanHandler.GetScanStatus)
+		r.With(jwtMiddleware).Get("/saved-scans", savedScanHandler.ListSavedScans)
+		r.With(jwtMiddleware).Get("/saved-scans/{id}", savedScanHandler.GetSavedScan)
 		r.With(jwtMiddleware).Get("/schedules", scheduleHandler.ListSchedules)
 		r.With(jwtMiddleware).Get("/schedules/{id}", scheduleHandler.GetSchedule)
 
@@ -183,12 +187,18 @@ func newRouter(db *sql.DB, cfg config.Config) (*chi.Mux, *handlers.ScanHandler, 
 		r.With(jwtMiddleware, adminOnly).Post("/assets/{id}/heartbeat", assetHandler.Heartbeat)
 		r.With(jwtMiddleware, adminOnly).Delete("/assets/{id}", assetHandler.DeleteAsset)
 		r.With(jwtMiddleware, adminOnly).Post("/users", userHandler.CreateUser)
+		r.With(jwtMiddleware).Put("/users/{id}/password", userHandler.ChangePassword)
 		r.With(jwtMiddleware, adminOnly).Put("/users/{id}", userHandler.UpdateUser)
 		r.With(jwtMiddleware, adminOnly).Delete("/users/{id}", userHandler.DeleteUser)
 		r.With(jwtMiddleware, adminOnly).Post("/scan", scanHandler.StartScan)
 		r.With(jwtMiddleware, adminOnly).Post("/scan/{id}/cancel", scanHandler.CancelScan)
 		r.With(jwtMiddleware, adminOnly).Post("/scans", scanHandler.StartScan)
 		r.With(jwtMiddleware, adminOnly).Post("/scans/{id}/cancel", scanHandler.CancelScan)
+		r.With(jwtMiddleware, adminOnly).Delete("/scans", scanHandler.ClearScans)
+		r.With(jwtMiddleware, adminOnly).Post("/saved-scans", savedScanHandler.CreateSavedScan)
+		r.With(jwtMiddleware, adminOnly).Put("/saved-scans/{id}", savedScanHandler.UpdateSavedScan)
+		r.With(jwtMiddleware, adminOnly).Delete("/saved-scans/{id}", savedScanHandler.DeleteSavedScan)
+		r.With(jwtMiddleware, adminOnly).Post("/saved-scans/{id}/run", savedScanHandler.RunSavedScan)
 		r.With(jwtMiddleware, adminOnly).Post("/schedules", scheduleHandler.CreateSchedule)
 		r.With(jwtMiddleware, adminOnly).Put("/schedules/{id}", scheduleHandler.UpdateSchedule)
 		r.With(jwtMiddleware, adminOnly).Delete("/schedules/{id}", scheduleHandler.DeleteSchedule)

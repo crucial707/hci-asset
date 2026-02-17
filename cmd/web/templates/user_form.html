@@ -12,5 +12,6 @@
   </select>
   <button type="submit">{{.SubmitLabel}}</button>
 </form>
+{{if .User}}<p><a href="/users/{{.User.ID}}/change-password">Change password</a></p>{{end}}
 <p><a href="/users">← Users</a></p>
 {{end}}

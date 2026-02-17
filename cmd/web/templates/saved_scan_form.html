@@ -1,0 +1,13 @@
+{{define "title"}}{{if .Saved}}Edit saved scan{{else}}Add saved scan{{end}}{{end}}
+{{define "content"}}
+<h1>{{if .Saved}}Edit saved scan{{else}}Add saved scan{{end}}</h1>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+<form method="post" action="{{.FormAction}}">
+  <label for="name">Name</label>
+  <input type="text" id="name" name="name" required placeholder="e.g. Office LAN" {{if .Saved}}value="{{.Saved.Name}}"{{else}}{{if .Name}}value="{{.Name}}"{{end}}{{end}}>
+  <label for="target">Target (IP, range, or CIDR)</label>
+  <input type="text" id="target" name="target" required placeholder="e.g. 192.168.1.0/24" {{if .Saved}}value="{{.Saved.Target}}"{{else}}{{if .Target}}value="{{.Target}}"{{end}}{{end}}>
+  <button type="submit">{{.SubmitLabel}}</button>
+</form>
+<p><a href="/saved-scans">← Saved Scans</a></p>
+{{end}}

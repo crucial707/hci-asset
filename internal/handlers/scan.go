@@ -171,6 +171,16 @@ func (h *ScanHandler) GetScanStatus(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(row)
 }
 
+// ClearScans deletes all scan job records from the DB so the active scans list starts fresh.
+// Running in-memory jobs are not stopped; they will complete and no longer appear after clear.
+func (h *ScanHandler) ClearScans(w http.ResponseWriter, r *http.Request) {
+	if err := h.ScanJobRepo.DeleteAll(r.Context()); err != nil {
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ==========================
 // Cancel Scan (only works for running jobs in memory).
 // ==========================
@@ -221,7 +231,9 @@ func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 	if nmapExe == "" {
 		nmapExe = "nmap"
 	}
-	cmd := exec.Command(nmapExe, "-sn", target)
+	// Use grepable output (-oG -) so we can parse only hosts with Status: Up.
+	// Default interactive output lists "Nmap scan report" for every IP; we only want hosts that responded.
+	cmd := exec.Command(nmapExe, "-sn", "-oG", "-", target)
 	outputBytes, err := cmd.CombinedOutput()
 	now := time.Now()
 	job.CompletedAt = &now
@@ -234,7 +246,9 @@ func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 
 	output := string(outputBytes)
 	lines := strings.Split(output, "\n")
-	re := regexp.MustCompile(`Nmap scan report for (.+) \(([\d\.]+)\)|Nmap scan report for ([\d\.]+)`)
+	// Only consider lines that indicate the host is up (grepable: "Host: IP (name)	Status: Up")
+	// Hostname may be empty: "Host: 192.168.1.1 ()	Status: Up"
+	reUp := regexp.MustCompile(`Host:\s+([\d.]+)\s*\(([^)]*)\)\s+Status:\s*Up\b`)
 
 	var discovered []models.Asset
 	for _, line := range lines {
@@ -248,36 +262,27 @@ func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 		default:
 		}
 
-		match := re.FindStringSubmatch(line)
-		if match != nil {
-			var name, ip string
-			if match[2] != "" {
-				name = match[1]
-				ip = match[2]
-			} else if match[3] != "" {
-				name = ""
-				ip = match[3]
-			} else {
-				continue
-			}
-
-			desc := "Discovered device"
-			displayName := name
-			if displayName == "" {
-				displayName = ip
-			}
-
-			asset, err := h.Repo.UpsertDiscovered(ctx, displayName, desc)
-			if err != nil {
-				if job.Error == "" {
-					job.Error = "one or more assets failed to upsert"
-				}
-				continue
-			}
-
-			asset.NetworkName = ip
-			discovered = append(discovered, *asset)
+		match := reUp.FindStringSubmatch(line)
+		if match == nil {
+			continue
 		}
+		ip := match[1]
+		hostname := strings.TrimSpace(match[2])
+		displayName := hostname
+		if displayName == "" {
+			displayName = ip
+		}
+
+		desc := "Discovered device"
+		asset, err := h.Repo.UpsertDiscovered(ctx, displayName, desc)
+		if err != nil {
+			if job.Error == "" {
+				job.Error = "one or more assets failed to upsert"
+			}
+			continue
+		}
+		asset.NetworkName = ip
+		discovered = append(discovered, *asset)
 	}
 
 	job.Assets = discovered
