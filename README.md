@@ -307,6 +307,52 @@ From the repo root:
 
 --------------------------------------------------------------------
 
+## Production and deployment
+
+### Environment mode
+
+- **ENV**: Set to `dev` (default) for local/Docker Compose development, or `prod` for production.
+- When **ENV=prod**, the API **refuses to start** if `JWT_SECRET` is unset or equals the default (`supersecretkey`). Set a strong secret (e.g. 32+ random bytes) in production.
+- In prod you may also set `LOG_FORMAT=json` and restrict `CORS_ALLOWED_ORIGINS` to your real front-end origin(s).
+
+### Secrets
+
+- **Do not** commit real secrets to the repo. For production:
+  - Use an **env file** that is not in version control: e.g. `env_file: .env.production` in `docker-compose` and add `.env.production` to `.gitignore`, or use a secrets manager.
+  - Override at least: **JWT_SECRET** (required in prod), **DB_PASS** (and optionally DB_USER/DB_NAME if different from dev).
+- Example override for the API service in Compose:
+  ```yaml
+  environment:
+    ENV: prod
+    JWT_SECRET: ${JWT_SECRET}   # set in shell or env file
+    DB_PASS: ${DB_PASS}
+  ```
+  Or use `env_file: .env.production` and set variables there.
+
+### Docker Compose: healthchecks and resources
+
+- **Healthchecks** are defined for all three services:
+  - **postgres**: `pg_isready -U assetuser` (interval 5s).
+  - **api**: `GET http://localhost:8080/health` via curl (interval 10s).
+  - **web**: `GET http://localhost:3000/health` via curl (interval 10s).
+- **api** and **web** start only after their dependencies report healthy (`depends_on` with `condition: service_healthy`), so the API waits for Postgres and the Web UI waits for the API.
+- **Resource limits** are set so a single service cannot exhaust the host:
+  - postgres: 512M memory, 0.5 CPU
+  - api: 512M memory, 0.5 CPU
+  - web: 256M memory, 0.25 CPU  
+  Adjust in `docker-compose.yml` under `deploy.resources.limits` if needed.
+
+### Production checklist (summary)
+
+- Set **ENV=prod** and a strong **JWT_SECRET**.
+- Use **TLS** in production: set `TLS_CERT_FILE` and `TLS_KEY_FILE` for the API (or put the API behind a TLS-terminating proxy).
+- Keep **DB backups**; document restore procedure.
+- Restrict **CORS_ALLOWED_ORIGINS** to your real UI origin(s).
+- Use **LOG_FORMAT=json** for production logging.
+- Liveness: **GET /health**. Readiness (DB): **GET /ready**.
+
+--------------------------------------------------------------------
+
 =Verify the API is Running=
 "curl http://localhost:8080/health"
 

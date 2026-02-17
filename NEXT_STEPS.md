@@ -101,10 +101,10 @@ Priorities: High → API reliability, security, config & deploy; Medium → obse
 
 ### Deployment & config
 
-- [ ] **Secrets** – Don’t pass secrets via plain env in compose; use secrets files or vault; document overriding JWT_SECRET and DB_* in prod.
-- [ ] **Docker healthchecks** – Add `healthcheck` for API (GET /health) and optionally Web; use depends_on with conditions when supported.
-- [ ] **Resource limits** – Add deploy.resources.limits (CPU/memory) in compose so a runaway process doesn’t take down the host.
-- [ ] **Environment mode** – Support `dev` / `prod` (or similar) to disable default JWT, stricter CORS, and adjust log level / error verbosity.
+- [x] **Secrets** – Don’t pass secrets via plain env in compose; use secrets files or vault; document overriding JWT_SECRET and DB_* in prod.
+- [x] **Docker healthchecks** – Add `healthcheck` for API (GET /health) and optionally Web; use depends_on with conditions when supported.
+- [x] **Resource limits** – Add deploy.resources.limits (CPU/memory) in compose so a runaway process doesn’t take down the host.
+- [x] **Environment mode** – Support `dev` / `prod` (or similar) to disable default JWT, stricter CORS, and adjust log level / error verbosity.
 
 ### Testing & quality
 
@@ -114,5 +114,5 @@ Priorities: High → API reliability, security, config & deploy; Medium → obse
 
 ### Documentation
 
-- [ ] **Production checklist in README** – TLS, non-default JWT, DB backups, CORS, logging, where to find metrics/health.
+- [x] **Production checklist in README** – TLS, non-default JWT, DB backups, CORS, logging, where to find metrics/health.
 - [ ] **Runbook** – One-page: how to check health, read logs, restart services; what to do on “DB unreachable” or “scan stuck”.

@@ -11,13 +11,26 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U assetuser"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
 
   api:
     build: .
     container_name: hci-asset-api
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     environment:
+      ENV: dev
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_NAME: assetdb
@@ -27,6 +40,17 @@ services:
       PORT: "8080"
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
 
   web:
     build:
@@ -34,12 +58,24 @@ services:
       dockerfile: Dockerfile.web
     container_name: hci-asset-web
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     environment:
       HCI_WEB_PORT: "3000"
       HCI_ASSET_API_URL: "http://api:8080/v1"
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.25"
 
 volumes:
   pgdata:

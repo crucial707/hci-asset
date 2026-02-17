@@ -16,7 +16,7 @@ RUN go build -o hci-asset ./cmd/api
 # 2. Run stage (smaller final image)
 FROM alpine:latest
 
-RUN apk add --no-cache nmap
+RUN apk add --no-cache nmap curl
 
 WORKDIR /app
 
