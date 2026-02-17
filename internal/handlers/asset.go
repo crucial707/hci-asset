@@ -99,14 +99,24 @@ func (h *AssetHandler) ListAssets(w http.ResponseWriter, r *http.Request) {
 	tag := r.URL.Query().Get("tag")
 
 	var assets []models.Asset
+	var total int
 	var err error
 	switch {
 	case tag != "":
 		assets, err = h.Repo.ListByTag(r.Context(), tag, limit, offset)
+		if err == nil {
+			total, err = h.Repo.CountByTag(r.Context(), tag)
+		}
 	case search != "":
 		assets, err = h.Repo.Search(r.Context(), search, limit, offset)
+		if err == nil {
+			total, err = h.Repo.CountSearch(r.Context(), search)
+		}
 	default:
 		assets, err = h.Repo.List(r.Context(), limit, offset)
+		if err == nil {
+			total, err = h.Repo.Count(r.Context())
+		}
 	}
 	if err != nil {
 		log.Printf("ListAssets error: %v", err)
@@ -115,7 +125,12 @@ func (h *AssetHandler) ListAssets(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(assets)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"items":  assets,
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
+	})
 }
 
 // ==========================

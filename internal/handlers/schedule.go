@@ -34,9 +34,19 @@ func (h *ScheduleHandler) ListSchedules(w http.ResponseWriter, r *http.Request) 
 		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
+	total, err := h.Repo.Count(r.Context())
+	if err != nil {
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(list)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"items":  list,
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
+	})
 }
 
 // GetSchedule returns one schedule by id.

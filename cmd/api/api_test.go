@@ -25,11 +25,13 @@ func TestAPI_LoginThenListAssets(t *testing.T) {
 		WithArgs("integration").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role"}).AddRow(1, "integration", nil, "viewer"))
 
-	// GET /assets: List(10, 0) default limit/offset
+	// GET /assets: List(10, 0) then Count()
 	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen FROM assets ORDER BY id LIMIT \$1 OFFSET \$2`).
 		WithArgs(10, 0).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen"}).
 			AddRow(1, "asset1", "desc1", "{}", nil))
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM assets`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 
 	cfg := config.Config{
 		JWTSecret: "test-secret-for-integration",
@@ -39,9 +41,9 @@ func TestAPI_LoginThenListAssets(t *testing.T) {
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
-	// 1) Login
+	// 1) Login (API is under /v1)
 	loginBody, _ := json.Marshal(map[string]string{"username": "integration"})
-	loginResp, err := http.Post(srv.URL+"/auth/login", "application/json", bytes.NewReader(loginBody))
+	loginResp, err := http.Post(srv.URL+"/v1/auth/login", "application/json", bytes.NewReader(loginBody))
 	if err != nil {
 		t.Fatalf("login request: %v", err)
 	}
@@ -57,7 +59,7 @@ func TestAPI_LoginThenListAssets(t *testing.T) {
 	}
 
 	// 2) GET /assets with Bearer token
-	req, _ := http.NewRequest("GET", srv.URL+"/assets", nil)
+	req, _ := http.NewRequest("GET", srv.URL+"/v1/assets", nil)
 	req.Header.Set("Authorization", "Bearer "+loginOut.Token)
 	assetsResp, err := srv.Client().Do(req)
 	if err != nil {
@@ -67,16 +69,18 @@ func TestAPI_LoginThenListAssets(t *testing.T) {
 	if assetsResp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /assets status: got %d, want 200", assetsResp.StatusCode)
 	}
-	var assets []struct {
-		ID          int    `json:"id"`
-		Name        string `json:"name"`
-		Description string `json:"description"`
+	var listResp struct {
+		Items []struct {
+			ID          int    `json:"id"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
+		} `json:"items"`
 	}
-	if err := json.NewDecoder(assetsResp.Body).Decode(&assets); err != nil {
+	if err := json.NewDecoder(assetsResp.Body).Decode(&listResp); err != nil {
 		t.Fatalf("decode assets: %v", err)
 	}
-	if len(assets) != 1 || assets[0].Name != "asset1" {
-		t.Errorf("unexpected assets: %+v", assets)
+	if len(listResp.Items) != 1 || listResp.Items[0].Name != "asset1" {
+		t.Errorf("unexpected assets: %+v", listResp.Items)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {

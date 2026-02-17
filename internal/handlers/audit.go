@@ -33,7 +33,17 @@ func (h *AuditHandler) ListAudit(w http.ResponseWriter, r *http.Request) {
 		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
+	total, err := h.Repo.Count(r.Context())
+	if err != nil {
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(entries)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"items":  entries,
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
+	})
 }

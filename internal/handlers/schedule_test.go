@@ -25,6 +25,8 @@ func TestScheduleHandler_ListSchedules(t *testing.T) {
 		WithArgs(50, 0).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "target", "cron_expr", "enabled", "created_at"}).
 			AddRow(1, "192.168.1.0/24", "0 * * * *", true, now))
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM scan_schedules`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 
 	scheduleRepo := repo.NewScheduleRepo(db)
 	h := &ScheduleHandler{Repo: scheduleRepo}
@@ -36,18 +38,20 @@ func TestScheduleHandler_ListSchedules(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Errorf("ListSchedules status: got %d, want 200", rr.Code)
 	}
-	var list []struct {
-		ID        int    `json:"id"`
-		Target    string `json:"target"`
-		CronExpr  string `json:"cron_expr"`
-		Enabled   bool   `json:"enabled"`
-		CreatedAt string `json:"created_at"`
+	var listResp struct {
+		Items []struct {
+			ID        int    `json:"id"`
+			Target    string `json:"target"`
+			CronExpr  string `json:"cron_expr"`
+			Enabled   bool   `json:"enabled"`
+			CreatedAt string `json:"created_at"`
+		} `json:"items"`
 	}
-	if err := json.NewDecoder(rr.Body).Decode(&list); err != nil {
+	if err := json.NewDecoder(rr.Body).Decode(&listResp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(list) != 1 || list[0].ID != 1 || list[0].Target != "192.168.1.0/24" {
-		t.Errorf("unexpected list: %+v", list)
+	if len(listResp.Items) != 1 || listResp.Items[0].ID != 1 || listResp.Items[0].Target != "192.168.1.0/24" {
+		t.Errorf("unexpected list: %+v", listResp.Items)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("expectations: %v", err)
@@ -64,6 +68,8 @@ func TestScheduleHandler_ListSchedules_QueryParams(t *testing.T) {
 	mock.ExpectQuery(`SELECT id, target, cron_expr, enabled, created_at`).
 		WithArgs(10, 20).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "target", "cron_expr", "enabled", "created_at"}))
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM scan_schedules`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
 	scheduleRepo := repo.NewScheduleRepo(db)
 	h := &ScheduleHandler{Repo: scheduleRepo}

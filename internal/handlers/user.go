@@ -72,14 +72,36 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 // List Users
 // ==========================
 func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := h.Repo.List(r.Context())
+	limit := 50
+	offset := 0
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if val, err := strconv.Atoi(l); err == nil && val > 0 {
+			limit = val
+		}
+	}
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if val, err := strconv.Atoi(o); err == nil && val >= 0 {
+			offset = val
+		}
+	}
+	users, err := h.Repo.List(r.Context(), limit, offset)
+	if err != nil {
+		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
+		return
+	}
+	total, err := h.Repo.Count(r.Context())
 	if err != nil {
 		JSONError(w, ErrMessageInternal, http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(users)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"items":  users,
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
+	})
 }
 
 // ==========================

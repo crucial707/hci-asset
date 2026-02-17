@@ -43,6 +43,8 @@ func TestAssetHandler_ListAssets(t *testing.T) {
 		WithArgs(10, 0).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen"}).
 			AddRow(1, "asset1", "desc1", "{}", nil))
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM assets`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 
 	assetRepo := repo.NewAssetRepo(db)
 	h := &AssetHandler{Repo: assetRepo}
@@ -54,16 +56,18 @@ func TestAssetHandler_ListAssets(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Errorf("ListAssets status: got %d, want 200", rr.Code)
 	}
-	var list []struct {
-		ID          int    `json:"id"`
-		Name        string `json:"name"`
-		Description string `json:"description"`
+	var listResp struct {
+		Items []struct {
+			ID          int    `json:"id"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
+		} `json:"items"`
 	}
-	if err := json.NewDecoder(rr.Body).Decode(&list); err != nil {
+	if err := json.NewDecoder(rr.Body).Decode(&listResp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(list) != 1 || list[0].Name != "asset1" {
-		t.Errorf("unexpected list: %+v", list)
+	if len(listResp.Items) != 1 || listResp.Items[0].Name != "asset1" {
+		t.Errorf("unexpected list: %+v", listResp.Items)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("expectations: %v", err)

@@ -86,6 +86,8 @@ func TestScanHandler_ListScans(t *testing.T) {
 	mock.ExpectQuery(`SELECT id, target, status, started_at FROM scan_jobs ORDER BY id DESC LIMIT \$1 OFFSET \$2`).
 		WithArgs(20, 0).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "target", "status", "started_at"}))
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM scan_jobs`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
 	assetRepo := repo.NewAssetRepo(db)
 	scanJobRepo := repo.NewScanJobRepo(db)
@@ -98,17 +100,19 @@ func TestScanHandler_ListScans(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Errorf("ListScans status: got %d, want 200", rr.Code)
 	}
-	var list []struct {
-		ID        int    `json:"id"`
-		Target    string `json:"target"`
-		Status    string `json:"status"`
-		StartedAt string `json:"started_at"`
+	var listResp struct {
+		Items []struct {
+			ID        int    `json:"id"`
+			Target    string `json:"target"`
+			Status    string `json:"status"`
+			StartedAt string `json:"started_at"`
+		} `json:"items"`
 	}
-	if err := json.NewDecoder(rr.Body).Decode(&list); err != nil {
+	if err := json.NewDecoder(rr.Body).Decode(&listResp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(list) != 0 {
-		t.Errorf("expected empty list, got %+v", list)
+	if len(listResp.Items) != 0 {
+		t.Errorf("expected empty list, got %+v", listResp.Items)
 	}
 }
 

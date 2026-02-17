@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	_ "embed"
 	"fmt"
 	"log"
 	"log/slog"
@@ -25,6 +26,12 @@ import (
 )
 
 const defaultJWTSecret = "supersecretkey"
+
+//go:embed openapi.json
+var openAPISpec []byte
+
+//go:embed docs.html
+var swaggerUIHTML []byte
 
 func main() {
 	cfg := config.Load()
@@ -95,6 +102,11 @@ func main() {
 	slog.Info("API server stopped")
 }
 
+func serveSwaggerUI(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(swaggerUIHTML)
+}
+
 // newRouter builds the HTTP router with handlers and middleware (used by main and tests).
 // Returns the router, ScanHandler (for scheduler), and ScheduleRepo (for scheduler).
 func newRouter(db *sql.DB, cfg config.Config) (*chi.Mux, *handlers.ScanHandler, *repo.ScheduleRepo) {
@@ -137,40 +149,50 @@ func newRouter(db *sql.DB, cfg config.Config) (*chi.Mux, *handlers.ScanHandler, 
 		w.Write([]byte("ok"))
 	})
 
-	authLimiter := middleware.AuthRateLimiter()
-	r.With(authLimiter.Middleware).Post("/auth/register", authHandler.Register)
-	r.With(authLimiter.Middleware).Post("/auth/login", authHandler.Login)
+	// OpenAPI spec and Swagger UI (no auth)
+	r.Get("/openapi.json", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(openAPISpec)
+	})
+	r.Get("/docs", serveSwaggerUI)
 
-	jwtMiddleware := middleware.JWTMiddleware([]byte(cfg.JWTSecret))
-	adminOnly := middleware.RequireAdmin
+	// API v1 (versioned)
+	r.Route("/v1", func(r chi.Router) {
+		authLimiter := middleware.AuthRateLimiter()
+		r.With(authLimiter.Middleware).Post("/auth/register", authHandler.Register)
+		r.With(authLimiter.Middleware).Post("/auth/login", authHandler.Login)
 
-	// Viewer (and admin): read-only
-	r.With(jwtMiddleware).Get("/assets", assetHandler.ListAssets)
-	r.With(jwtMiddleware).Get("/assets/{id}", assetHandler.GetAsset)
-	r.With(jwtMiddleware).Get("/users", userHandler.ListUsers)
-	r.With(jwtMiddleware).Get("/users/{id}", userHandler.GetUser)
-	r.With(jwtMiddleware).Get("/audit", auditHandler.ListAudit)
-	r.With(jwtMiddleware).Get("/scan/{id}", scanHandler.GetScanStatus)
-	r.With(jwtMiddleware).Get("/scans", scanHandler.ListScans)
-	r.With(jwtMiddleware).Get("/scans/{id}", scanHandler.GetScanStatus)
-	r.With(jwtMiddleware).Get("/schedules", scheduleHandler.ListSchedules)
-	r.With(jwtMiddleware).Get("/schedules/{id}", scheduleHandler.GetSchedule)
+		jwtMiddleware := middleware.JWTMiddleware([]byte(cfg.JWTSecret))
+		adminOnly := middleware.RequireAdmin
 
-	// Admin only: create, update, delete, scan, heartbeat
-	r.With(jwtMiddleware, adminOnly).Post("/assets", assetHandler.CreateAsset)
-	r.With(jwtMiddleware, adminOnly).Put("/assets/{id}", assetHandler.UpdateAsset)
-	r.With(jwtMiddleware, adminOnly).Post("/assets/{id}/heartbeat", assetHandler.Heartbeat)
-	r.With(jwtMiddleware, adminOnly).Delete("/assets/{id}", assetHandler.DeleteAsset)
-	r.With(jwtMiddleware, adminOnly).Post("/users", userHandler.CreateUser)
-	r.With(jwtMiddleware, adminOnly).Put("/users/{id}", userHandler.UpdateUser)
-	r.With(jwtMiddleware, adminOnly).Delete("/users/{id}", userHandler.DeleteUser)
-	r.With(jwtMiddleware, adminOnly).Post("/scan", scanHandler.StartScan)
-	r.With(jwtMiddleware, adminOnly).Post("/scan/{id}/cancel", scanHandler.CancelScan)
-	r.With(jwtMiddleware, adminOnly).Post("/scans", scanHandler.StartScan)
-	r.With(jwtMiddleware, adminOnly).Post("/scans/{id}/cancel", scanHandler.CancelScan)
-	r.With(jwtMiddleware, adminOnly).Post("/schedules", scheduleHandler.CreateSchedule)
-	r.With(jwtMiddleware, adminOnly).Put("/schedules/{id}", scheduleHandler.UpdateSchedule)
-	r.With(jwtMiddleware, adminOnly).Delete("/schedules/{id}", scheduleHandler.DeleteSchedule)
+		// Viewer (and admin): read-only
+		r.With(jwtMiddleware).Get("/assets", assetHandler.ListAssets)
+		r.With(jwtMiddleware).Get("/assets/{id}", assetHandler.GetAsset)
+		r.With(jwtMiddleware).Get("/users", userHandler.ListUsers)
+		r.With(jwtMiddleware).Get("/users/{id}", userHandler.GetUser)
+		r.With(jwtMiddleware).Get("/audit", auditHandler.ListAudit)
+		r.With(jwtMiddleware).Get("/scan/{id}", scanHandler.GetScanStatus)
+		r.With(jwtMiddleware).Get("/scans", scanHandler.ListScans)
+		r.With(jwtMiddleware).Get("/scans/{id}", scanHandler.GetScanStatus)
+		r.With(jwtMiddleware).Get("/schedules", scheduleHandler.ListSchedules)
+		r.With(jwtMiddleware).Get("/schedules/{id}", scheduleHandler.GetSchedule)
+
+		// Admin only: create, update, delete, scan, heartbeat
+		r.With(jwtMiddleware, adminOnly).Post("/assets", assetHandler.CreateAsset)
+		r.With(jwtMiddleware, adminOnly).Put("/assets/{id}", assetHandler.UpdateAsset)
+		r.With(jwtMiddleware, adminOnly).Post("/assets/{id}/heartbeat", assetHandler.Heartbeat)
+		r.With(jwtMiddleware, adminOnly).Delete("/assets/{id}", assetHandler.DeleteAsset)
+		r.With(jwtMiddleware, adminOnly).Post("/users", userHandler.CreateUser)
+		r.With(jwtMiddleware, adminOnly).Put("/users/{id}", userHandler.UpdateUser)
+		r.With(jwtMiddleware, adminOnly).Delete("/users/{id}", userHandler.DeleteUser)
+		r.With(jwtMiddleware, adminOnly).Post("/scan", scanHandler.StartScan)
+		r.With(jwtMiddleware, adminOnly).Post("/scan/{id}/cancel", scanHandler.CancelScan)
+		r.With(jwtMiddleware, adminOnly).Post("/scans", scanHandler.StartScan)
+		r.With(jwtMiddleware, adminOnly).Post("/scans/{id}/cancel", scanHandler.CancelScan)
+		r.With(jwtMiddleware, adminOnly).Post("/schedules", scheduleHandler.CreateSchedule)
+		r.With(jwtMiddleware, adminOnly).Put("/schedules/{id}", scheduleHandler.UpdateSchedule)
+		r.With(jwtMiddleware, adminOnly).Delete("/schedules/{id}", scheduleHandler.DeleteSchedule)
+	})
 
 	return r, scanHandler, scheduleRepo
 }

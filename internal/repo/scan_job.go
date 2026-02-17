@@ -107,6 +107,13 @@ type ListEntry struct {
 	StartedAt time.Time `json:"started_at"`
 }
 
+// Count returns the total number of scan jobs.
+func (r *ScanJobRepo) Count(ctx context.Context) (int, error) {
+	var n int
+	err := r.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM scan_jobs").Scan(&n)
+	return n, err
+}
+
 // List returns recent scan jobs, ordered by id DESC.
 func (r *ScanJobRepo) List(ctx context.Context, limit, offset int) ([]ListEntry, error) {
 	rows, err := r.DB.QueryContext(ctx,

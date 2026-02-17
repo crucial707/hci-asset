@@ -28,7 +28,7 @@ var staticFS embed.FS
 const (
 	cookieName   = "hci_asset_token"
 	defaultPort  = "3000"
-	defaultAPI   = "http://localhost:8080"
+	defaultAPI   = "http://localhost:8080/v1"
 	envWebPort   = "HCI_WEB_PORT"
 	envAPIURL    = "HCI_ASSET_API_URL"
 )
@@ -310,20 +310,23 @@ func dashboard(apiBase string) http.HandlerFunc {
 			return
 		}
 
-		var assets []struct {
-			ID          int     `json:"id"`
-			Name        string  `json:"name"`
-			Description string  `json:"description"`
-			LastSeen    *string `json:"last_seen"`
+		var listResp struct {
+			Items []struct {
+				ID          int     `json:"id"`
+				Name        string  `json:"name"`
+				Description string  `json:"description"`
+				LastSeen    *string `json:"last_seen"`
+			} `json:"items"`
+			Total int `json:"total"`
 		}
-		if err := json.Unmarshal(data, &assets); err != nil {
+		if err := json.Unmarshal(data, &listResp); err != nil {
 			renderTemplate(w, "dashboard.html", map[string]interface{}{"Error": "Invalid assets response"})
 			return
 		}
 
 		renderTemplate(w, "dashboard.html", map[string]interface{}{
-			"AssetCount": len(assets),
-			"Assets":    assets,
+			"AssetCount": listResp.Total,
+			"Assets":    listResp.Items,
 		})
 	}
 }
@@ -369,20 +372,26 @@ func assetsList(apiBase string) http.HandlerFunc {
 			return
 		}
 
-		var assets []struct {
-			ID          int      `json:"id"`
-			Name        string   `json:"name"`
-			Description string   `json:"description"`
-			Tags        []string `json:"tags"`
-			NetworkName string   `json:"network_name"`
-			LastSeen    *string  `json:"last_seen"`
+		var listResp struct {
+			Items  []struct {
+				ID          int      `json:"id"`
+				Name        string   `json:"name"`
+				Description string   `json:"description"`
+				Tags        []string `json:"tags"`
+				NetworkName string   `json:"network_name"`
+				LastSeen    *string  `json:"last_seen"`
+			} `json:"items"`
+			Total  int `json:"total"`
+			Limit  int `json:"limit"`
+			Offset int `json:"offset"`
 		}
-		if err := json.Unmarshal(data, &assets); err != nil {
+		if err := json.Unmarshal(data, &listResp); err != nil {
 			renderTemplate(w, "assets.html", map[string]interface{}{"Error": "Invalid assets response", "SearchQuery": search, "TagFilter": tagFilter, "Page": page})
 			return
 		}
+		assets := listResp.Items
 
-		hasNext := len(assets) == pageSize
+		hasNext := listResp.Offset+len(listResp.Items) < listResp.Total
 		prevPage := 0
 		if page > 1 {
 			prevPage = page - 1
@@ -782,19 +791,21 @@ func scanPage(apiBase string) http.HandlerFunc {
 			return
 		}
 
-		var scans []struct {
-			ID        int    `json:"id"`
-			Target    string `json:"target"`
-			Status    string `json:"status"`
-			StartedAt string `json:"started_at"`
+		var listResp struct {
+			Items []struct {
+				ID        int    `json:"id"`
+				Target    string `json:"target"`
+				Status    string `json:"status"`
+				StartedAt string `json:"started_at"`
+			} `json:"items"`
 		}
-		if err := json.Unmarshal(data, &scans); err != nil {
+		if err := json.Unmarshal(data, &listResp); err != nil {
 			renderTemplate(w, "scan.html", map[string]interface{}{})
 			return
 		}
 
 		renderTemplate(w, "scan.html", map[string]interface{}{
-			"Scans": scans,
+			"Scans": listResp.Items,
 		})
 	}
 }
@@ -971,19 +982,21 @@ func schedulesList(apiBase string) http.HandlerFunc {
 			return
 		}
 
-		var schedules []struct {
-			ID        int       `json:"id"`
-			Target    string    `json:"target"`
-			CronExpr  string    `json:"cron_expr"`
-			Enabled   bool      `json:"enabled"`
-			CreatedAt time.Time `json:"created_at"`
+		var listResp struct {
+			Items []struct {
+				ID        int       `json:"id"`
+				Target    string    `json:"target"`
+				CronExpr  string    `json:"cron_expr"`
+				Enabled   bool      `json:"enabled"`
+				CreatedAt time.Time `json:"created_at"`
+			} `json:"items"`
 		}
-		if err := json.Unmarshal(data, &schedules); err != nil {
+		if err := json.Unmarshal(data, &listResp); err != nil {
 			renderTemplate(w, "schedules.html", map[string]interface{}{"Error": "Invalid schedules response"})
 			return
 		}
 
-		renderTemplate(w, "schedules.html", map[string]interface{}{"Schedules": schedules})
+		renderTemplate(w, "schedules.html", map[string]interface{}{"Schedules": listResp.Items})
 	}
 }
 
@@ -1243,21 +1256,27 @@ func auditList(apiBase string) http.HandlerFunc {
 			return
 		}
 
-		var entries []struct {
-			ID           int       `json:"id"`
-			UserID       int       `json:"user_id"`
-			Action       string    `json:"action"`
-			ResourceType string    `json:"resource_type"`
-			ResourceID   int       `json:"resource_id"`
-			Details      string    `json:"details"`
-			CreatedAt    time.Time `json:"created_at"`
+		var listResp struct {
+			Items  []struct {
+				ID           int       `json:"id"`
+				UserID       int       `json:"user_id"`
+				Action       string    `json:"action"`
+				ResourceType string    `json:"resource_type"`
+				ResourceID   int       `json:"resource_id"`
+				Details      string    `json:"details"`
+				CreatedAt    time.Time `json:"created_at"`
+			} `json:"items"`
+			Total  int `json:"total"`
+			Limit  int `json:"limit"`
+			Offset int `json:"offset"`
 		}
-		if err := json.Unmarshal(data, &entries); err != nil {
+		if err := json.Unmarshal(data, &listResp); err != nil {
 			renderTemplate(w, "audit.html", map[string]interface{}{"Error": "Invalid audit response"})
 			return
 		}
+		entries := listResp.Items
 
-		hasNext := len(entries) == limit
+		hasNext := listResp.Offset+len(listResp.Items) < listResp.Total
 		prevOffset := 0
 		if offset > 0 {
 			prevOffset = offset - limit
@@ -1303,17 +1322,19 @@ func usersList(apiBase string) http.HandlerFunc {
 			return
 		}
 
-		var users []struct {
-			ID       int    `json:"id"`
-			Username string `json:"username"`
+		var listResp struct {
+			Items []struct {
+				ID       int    `json:"id"`
+				Username string `json:"username"`
+			} `json:"items"`
 		}
-		if err := json.Unmarshal(data, &users); err != nil {
+		if err := json.Unmarshal(data, &listResp); err != nil {
 			renderTemplate(w, "users.html", map[string]interface{}{"Error": "Invalid users response"})
 			return
 		}
 
 		renderTemplate(w, "users.html", map[string]interface{}{
-			"Users": users,
+			"Users": listResp.Items,
 		})
 	}
 }

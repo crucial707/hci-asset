@@ -96,6 +96,28 @@ func (r *AssetRepo) UpsertDiscovered(ctx context.Context, name, description stri
 	return nil, err
 }
 
+// Count returns the total number of assets.
+func (r *AssetRepo) Count(ctx context.Context) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM assets").Scan(&n)
+	return n, err
+}
+
+// CountByTag returns the number of assets with the given tag.
+func (r *AssetRepo) CountByTag(ctx context.Context, tag string) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM assets WHERE $1 = ANY(COALESCE(tags, '{}'))", tag).Scan(&n)
+	return n, err
+}
+
+// CountSearch returns the number of assets matching the search query (name or description).
+func (r *AssetRepo) CountSearch(ctx context.Context, query string) (int, error) {
+	likeQuery := "%" + strings.ToLower(query) + "%"
+	var n int
+	err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM assets WHERE LOWER(name) LIKE $1 OR LOWER(description) LIKE $1", likeQuery).Scan(&n)
+	return n, err
+}
+
 // ==========================
 // List assets with pagination
 // ==========================

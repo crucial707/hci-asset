@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	defaultAPIURL  = "http://localhost:8080"
+	defaultAPIURL  = "http://localhost:8080/v1"
 	tokenDirName   = ".hci-asset"
 	tokenFileName  = "token"
 	tokenEnvVar    = "HCI_ASSET_TOKEN"

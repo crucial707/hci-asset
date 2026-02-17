@@ -37,7 +37,7 @@ services:
       - api
     environment:
       HCI_WEB_PORT: "3000"
-      HCI_ASSET_API_URL: "http://api:8080"
+      HCI_ASSET_API_URL: "http://api:8080/v1"
     ports:
       - "3000:3000"
 

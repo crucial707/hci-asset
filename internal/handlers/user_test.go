@@ -81,10 +81,13 @@ func TestUserHandler_ListUsers(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, username, password_hash, role FROM users ORDER BY id`).
+	mock.ExpectQuery(`SELECT id, username, password_hash, role FROM users ORDER BY id LIMIT \$1 OFFSET \$2`).
+		WithArgs(50, 0).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role"}).
 			AddRow(1, "alice", nil, "viewer").
 			AddRow(2, "bob", nil, "viewer"))
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM users`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
 
 	userRepo := repo.NewUserRepo(db)
 	h := &UserHandler{Repo: userRepo}
@@ -96,15 +99,17 @@ func TestUserHandler_ListUsers(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Errorf("ListUsers status: got %d, want 200", rr.Code)
 	}
-	var list []struct {
-		ID       int    `json:"id"`
-		Username string `json:"username"`
+	var listResp struct {
+		Items []struct {
+			ID       int    `json:"id"`
+			Username string `json:"username"`
+		} `json:"items"`
 	}
-	if err := json.NewDecoder(rr.Body).Decode(&list); err != nil {
+	if err := json.NewDecoder(rr.Body).Decode(&listResp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(list) != 2 || list[0].Username != "alice" || list[1].Username != "bob" {
-		t.Errorf("unexpected list: %+v", list)
+	if len(listResp.Items) != 2 || listResp.Items[0].Username != "alice" || listResp.Items[1].Username != "bob" {
+		t.Errorf("unexpected list: %+v", listResp.Items)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("expectations: %v", err)

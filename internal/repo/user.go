@@ -140,11 +140,16 @@ func (r *UserRepo) Delete(ctx context.Context, id int) error {
 	return nil
 }
 
-// ==========================
-// List Users (password_hash not returned in list)
-// ==========================
-func (r *UserRepo) List(ctx context.Context) ([]models.User, error) {
-	rows, err := r.DB.QueryContext(ctx, `SELECT id, username, password_hash, role FROM users ORDER BY id`)
+// Count returns the total number of users.
+func (r *UserRepo) Count(ctx context.Context) (int, error) {
+	var n int
+	err := r.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM users").Scan(&n)
+	return n, err
+}
+
+// List returns users with pagination (password_hash not returned in list).
+func (r *UserRepo) List(ctx context.Context, limit, offset int) ([]models.User, error) {
+	rows, err := r.DB.QueryContext(ctx, `SELECT id, username, password_hash, role FROM users ORDER BY id LIMIT $1 OFFSET $2`, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -157,8 +162,7 @@ func (r *UserRepo) List(ctx context.Context) ([]models.User, error) {
 		if err := rows.Scan(&u.ID, &u.Username, &pwHash, &u.Role); err != nil {
 			return nil, err
 		}
-		// Don't expose password_hash in list
 		users = append(users, u)
 	}
-	return users, nil
+	return users, rows.Err()
 }

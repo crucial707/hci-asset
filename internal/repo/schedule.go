@@ -17,6 +17,13 @@ func NewScheduleRepo(db *sql.DB) *ScheduleRepo {
 	return &ScheduleRepo{DB: db}
 }
 
+// Count returns the total number of schedules.
+func (r *ScheduleRepo) Count(ctx context.Context) (int, error) {
+	var n int
+	err := r.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM scan_schedules").Scan(&n)
+	return n, err
+}
+
 // List returns schedules, most recent first. limit/offset for pagination.
 func (r *ScheduleRepo) List(ctx context.Context, limit, offset int) ([]models.Schedule, error) {
 	query := `

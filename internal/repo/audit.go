@@ -26,6 +26,13 @@ func (r *AuditRepo) Log(ctx context.Context, userID int, action, resourceType st
 	return err
 }
 
+// Count returns the total number of audit entries.
+func (r *AuditRepo) Count(ctx context.Context) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM audit_log").Scan(&n)
+	return n, err
+}
+
 // List returns recent audit entries, newest first.
 func (r *AuditRepo) List(ctx context.Context, limit, offset int) ([]models.AuditEntry, error) {
 	rows, err := r.db.QueryContext(ctx,

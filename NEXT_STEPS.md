@@ -82,9 +82,9 @@ Priorities: High → API reliability, security, config & deploy; Medium → obse
 
 ### API: Design & consistency
 
-- [ ] **API versioning** – Prefix routes with `/v1/` (e.g. `/v1/assets`, `/v1/auth/login`) for future breaking changes and clear contracts.
-- [ ] **OpenAPI / Swagger** – Document API with OpenAPI 3; serve `/openapi.json` or Swagger UI for discoverability and codegen.
-- [ ] **Pagination response shape** – Standardize list responses: `{"items": [...], "total": N, "limit": 20, "offset": 0}` for “Page X of Y”.
+- [x] **API versioning** – Prefix routes with `/v1/` (e.g. `/v1/assets`, `/v1/auth/login`) for future breaking changes and clear contracts.
+- [x] **OpenAPI / Swagger** – Document API with OpenAPI 3; serve `/openapi.json` or Swagger UI for discoverability and codegen.
+- [x] **Pagination response shape** – Standardize list responses: `{"items": [...], "total": N, "limit": 20, "offset": 0}` for “Page X of Y”.
 
 ### Observability
 
