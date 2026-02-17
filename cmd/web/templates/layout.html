@@ -4,18 +4,60 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>HCI Asset – {{block "title" .}}Dashboard{{end}}</title>
+  <title>Humboldt Cyber Intelligence – Asset {{block "title" .}}Dashboard{{end}}</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.min.css">
   <style>
+    :root {
+      --hci-dark: #1a3a4a;
+      --hci-accent: #2d5a6b;
+      --hci-teal: #7eb8c9;
+    }
     body { max-width: 960px; margin: 0 auto; padding: 1rem; }
-    nav { margin-bottom: 1.5rem; }
-    nav a { margin-right: 1rem; }
+    .brand-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--hci-teal, #7eb8c9);
+    }
+    .brand-header a { text-decoration: none; color: inherit; display: flex; align-items: center; gap: 0.75rem; }
+    .brand-header img { height: 48px; width: auto; display: block; }
+    .brand-text { line-height: 1.2; }
+    .brand-name { font-size: 1.25rem; font-weight: 700; color: var(--hci-dark, #1a3a4a); }
+    .brand-product { font-size: 0.85rem; color: var(--hci-accent, #2d5a6b); }
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 1rem;
+      margin-bottom: 1.5rem;
+    }
+    nav a { margin-right: 0; }
+    .nav-spacer { margin-left: auto; }
     .error { color: #c00; }
     table { width: 100%; }
     th, td { text-align: left; padding: 0.5rem; }
+    main { min-height: 40vh; }
+    .page-footer {
+      margin-top: 2.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid #eee;
+      font-size: 0.85rem;
+      color: #666;
+    }
   </style>
 </head>
 <body>
+  <header class="brand-header">
+    <a href="/dashboard">
+      <img src="/static/logo.svg" alt="Humboldt Cyber Intelligence">
+      <span class="brand-text">
+        <span class="brand-name">Humboldt Cyber Intelligence</span>
+        <span class="brand-product">Asset &amp; Security</span>
+      </span>
+    </a>
+  </header>
   <nav>
     <a href="/dashboard">Dashboard</a>
     <a href="/assets">Assets</a>
@@ -23,9 +65,15 @@
     <a href="/scans">Scans</a>
     <a href="/schedules">Schedules</a>
     <a href="/audit">Audit log</a>
+    <span class="nav-spacer"></span>
     <a href="/logout">Log out</a>
   </nav>
+  <main>
   {{template "content" .}}
+  </main>
+  <footer class="page-footer">
+    Humboldt Cyber Intelligence · Asset inventory &amp; security
+  </footer>
 </body>
 </html>
 {{end}}

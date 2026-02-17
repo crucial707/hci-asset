@@ -4,14 +4,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Log in – HCI Asset</title>
+  <title>Log in – Humboldt Cyber Intelligence</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.min.css">
-  <style> body { max-width: 400px; margin: 2rem auto; } .error { color: #c00; } </style>
+  <style>
+    :root { --hci-dark: #1a3a4a; --hci-accent: #2d5a6b; --hci-teal: #7eb8c9; }
+    body { max-width: 400px; margin: 2rem auto; text-align: center; }
+    .login-brand { margin-bottom: 1.5rem; }
+    .login-brand a { text-decoration: none; color: inherit; display: inline-flex; flex-direction: column; align-items: center; gap: 0.5rem; }
+    .login-brand img { height: 64px; width: auto; }
+    .login-brand .name { font-size: 1.1rem; font-weight: 700; color: var(--hci-dark); }
+    .login-brand .product { font-size: 0.9rem; color: var(--hci-accent); }
+    .login-form { text-align: left; margin-top: 1.5rem; }
+    .error { color: #c00; }
+  </style>
 </head>
 <body>
-  <h1>HCI Asset</h1>
+  <div class="login-brand">
+    <a href="/login">
+      <img src="/static/logo.svg" alt="Humboldt Cyber Intelligence">
+      <span class="name">Humboldt Cyber Intelligence</span>
+      <span class="product">Asset &amp; Security</span>
+    </a>
+  </div>
+  <h1>Log in</h1>
   {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
-  <form method="post" action="/login">
+  <form class="login-form" method="post" action="/login">
     <label for="username">Username</label>
     <input id="username" name="username" type="text" required autofocus>
     <label for="password">Password (optional)</label>

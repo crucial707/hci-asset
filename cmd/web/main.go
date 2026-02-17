@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
@@ -20,6 +21,9 @@ import (
 
 //go:embed templates
 var templatesFS embed.FS
+
+//go:embed static
+var staticFS embed.FS
 
 const (
 	cookieName   = "hci_asset_token"
@@ -41,6 +45,10 @@ func main() {
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok"))
 	})
+
+	// Static assets (logo, etc.)
+	staticRoot, _ := fs.Sub(staticFS, "static")
+	r.Handle("/static/*", http.StripPrefix("/static", http.FileServer(http.FS(staticRoot))))
 
 	// Public
 	r.Get("/login", loginForm)

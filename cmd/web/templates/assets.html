@@ -1,4 +1,6 @@
+{{define "title"}}Assets{{end}}
 {{define "content"}}
+<section aria-label="Assets">
 <h1>Assets</h1>
 {{if .Error}}<p class="error">{{.Error}}</p>{{else}}
 <p><a href="/assets/new">+ New asset</a></p>
@@ -30,5 +32,6 @@
   </tbody>
 </table>
 {{if not .Assets}}<p>No assets.</p>{{end}}
+</section>
 {{end}}
 {{end}}

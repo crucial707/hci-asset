@@ -1,4 +1,5 @@
 {{define "content"}}
+<section aria-label="Dashboard">
 <h1>Dashboard</h1>
 {{if .Error}}<p class="error">{{.Error}}</p>{{else}}
 <p><strong>{{.AssetCount}}</strong> assets in inventory.</p>
@@ -21,4 +22,5 @@
 <p>No assets yet. Run a scan from the CLI or add assets via the API.</p>
 {{end}}
 {{end}}
+</section>
 {{end}}

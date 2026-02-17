@@ -258,6 +258,8 @@ A web dashboard runs as a separate binary and talks to the API.
 
 - **Config**: `HCI_WEB_PORT` (default 3000), `HCI_ASSET_API_URL` (default http://localhost:8080). The UI stores a JWT in a cookie after login.
 
+- **Branding**: The UI is branded **Humboldt Cyber Intelligence** with a logo in the header and footer. To use your own logo image, add `logo.png` (or `logo.svg`) to `cmd/web/static/` and set the `src` in `templates/layout.html` and `templates/login.html` to `/static/logo.png` (or `.svg`). By default a placeholder is served from `static/logo.svg`.
+
 --------------------------------------------------------------------
 
 ## Development
