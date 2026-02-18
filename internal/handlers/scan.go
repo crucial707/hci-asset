@@ -1,11 +1,12 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"net/http"
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -239,27 +240,52 @@ func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 	if nmapExe == "" {
 		nmapExe = "nmap"
 	}
-	// Use grepable output (-oG -) so we can parse only hosts with Status: Up.
-	// Default interactive output lists "Nmap scan report" for every IP; we only want hosts that responded.
-	cmd := exec.Command(nmapExe, "-sn", "-oG", "-", target)
-	outputBytes, err := cmd.CombinedOutput()
+	// Use XML output (-oX -) for structured parsing of hostnames and MAC/vendor (when available).
+	cmd := exec.Command(nmapExe, "-sn", "-oX", "-", target)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	outputBytes, err := cmd.Output()
 	now := time.Now()
 	job.CompletedAt = &now
 	if err != nil {
 		job.Status = "error"
-		job.Error = err.Error()
+		if se := strings.TrimSpace(stderr.String()); se != "" {
+			job.Error = err.Error() + ": " + se
+		} else {
+			job.Error = err.Error()
+		}
 		persist()
 		return
 	}
 
-	output := string(outputBytes)
-	lines := strings.Split(output, "\n")
-	// Only consider lines that indicate the host is up (grepable: "Host: IP (name)	Status: Up")
-	// Hostname may be empty: "Host: 192.168.1.1 ()	Status: Up"
-	reUp := regexp.MustCompile(`Host:\s+([\d.]+)\s*\(([^)]*)\)\s+Status:\s*Up\b`)
+	type nmapRun struct {
+		Hosts []struct {
+			Status struct {
+				State string `xml:"state,attr"`
+			} `xml:"status"`
+			Addresses []struct {
+				Addr     string `xml:"addr,attr"`
+				AddrType string `xml:"addrtype,attr"`
+				Vendor   string `xml:"vendor,attr"`
+			} `xml:"address"`
+			Hostnames struct {
+				Hostnames []struct {
+					Name string `xml:"name,attr"`
+				} `xml:"hostname"`
+			} `xml:"hostnames"`
+		} `xml:"host"`
+	}
+
+	var run nmapRun
+	if err := xml.Unmarshal(outputBytes, &run); err != nil {
+		job.Status = "error"
+		job.Error = "failed to parse nmap output"
+		persist()
+		return
+	}
 
 	var discovered []models.Asset
-	for _, line := range lines {
+	for _, host := range run.Hosts {
 		select {
 		case <-cancelCh:
 			done := time.Now()
@@ -270,29 +296,46 @@ func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 		default:
 		}
 
-		match := reUp.FindStringSubmatch(line)
-		if match == nil {
+		if strings.ToLower(host.Status.State) != "up" {
 			continue
 		}
-		ip := match[1]
-		hostname := strings.TrimSpace(match[2])
-		displayName := hostname
-		if displayName == "" {
-			displayName = ip
+
+		var ip, hostname, mac, vendor string
+		for _, a := range host.Addresses {
+			switch strings.ToLower(a.AddrType) {
+			case "ipv4":
+				ip = a.Addr
+			case "mac":
+				mac = a.Addr
+				vendor = strings.TrimSpace(a.Vendor)
+			}
+		}
+		if len(host.Hostnames.Hostnames) > 0 {
+			hostname = strings.TrimSpace(host.Hostnames.Hostnames[0].Name)
+		}
+		if ip == "" {
+			continue
 		}
 
 		desc := "Discovered device"
-		asset, err := h.Repo.UpsertDiscovered(ctx, displayName, desc)
+		if mac != "" {
+			if vendor != "" {
+				desc = desc + " (MAC " + mac + ", " + vendor + ")"
+			} else {
+				desc = desc + " (MAC " + mac + ")"
+			}
+		}
+
+		asset, err := h.Repo.UpsertDiscoveredByIP(ctx, ip, hostname, desc)
 		if err != nil {
 			if job.Error == "" {
 				job.Error = "one or more assets failed to upsert"
 			}
 			continue
 		}
+
+		// Ensure response includes the IP field (stored in network_name).
 		asset.NetworkName = ip
-		if err := h.Repo.UpdateNetworkName(ctx, asset.ID, ip); err != nil {
-			// Non-fatal: asset is still discovered, IP just not persisted
-		}
 		discovered = append(discovered, *asset)
 	}
 

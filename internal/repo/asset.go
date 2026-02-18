@@ -71,6 +71,28 @@ func (r *AssetRepo) FindByName(ctx context.Context, name string) (*models.Asset,
 }
 
 // ==========================
+// Find asset by network_name
+// ==========================
+func (r *AssetRepo) FindByNetworkName(ctx context.Context, networkName string) (*models.Asset, error) {
+	var a models.Asset
+	var lastSeen sql.NullTime
+	err := r.db.QueryRowContext(ctx,
+		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen, COALESCE(network_name, '') FROM assets WHERE network_name=$1",
+		networkName,
+	).Scan(&a.ID, &a.Name, &a.Description, pq.Array(&a.Tags), &lastSeen, &a.NetworkName)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrAssetNotFound
+		}
+		return nil, err
+	}
+	if lastSeen.Valid {
+		a.LastSeen = &lastSeen.Time
+	}
+	return &a, nil
+}
+
+// ==========================
 // Upsert discovered asset (idempotent)
 // ==========================
 // UpsertDiscovered either finds an existing asset by name or creates it.
@@ -94,6 +116,56 @@ func (r *AssetRepo) UpsertDiscovered(ctx context.Context, name, description stri
 	}
 
 	return nil, err
+}
+
+// ==========================
+// Upsert discovered asset by IP (network_name)
+// ==========================
+// UpsertDiscoveredByIP finds/creates an asset keyed by the discovered IP (stored in network_name).
+// This avoids duplicate assets when a hostname changes between scans.
+func (r *AssetRepo) UpsertDiscoveredByIP(ctx context.Context, ip, hostname, description string) (*models.Asset, error) {
+	if strings.TrimSpace(ip) == "" {
+		return nil, fmt.Errorf("missing ip")
+	}
+
+	// Prefer stable IP key when available.
+	existing, err := r.FindByNetworkName(ctx, ip)
+	if err == nil {
+		newName := existing.Name
+		if strings.TrimSpace(hostname) != "" && (newName == "" || newName == ip) {
+			newName = hostname
+		}
+
+		// Only overwrite auto-generated descriptions.
+		newDesc := existing.Description
+		if strings.TrimSpace(description) != "" && (newDesc == "" || strings.HasPrefix(newDesc, "Discovered")) {
+			newDesc = description
+		}
+
+		if newName != existing.Name || newDesc != existing.Description {
+			updated, updateErr := r.Update(ctx, existing.ID, newName, newDesc, existing.Tags)
+			if updateErr == nil {
+				return updated, nil
+			}
+		}
+		return existing, nil
+	}
+	if !errors.Is(err, ErrAssetNotFound) {
+		return nil, err
+	}
+
+	name := strings.TrimSpace(hostname)
+	if name == "" {
+		name = ip
+	}
+	created, err := r.Create(ctx, name, description, nil)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.UpdateNetworkName(ctx, created.ID, ip); err != nil {
+		return nil, err
+	}
+	return r.Get(ctx, created.ID)
 }
 
 // Count returns the total number of assets.

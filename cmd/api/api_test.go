@@ -26,10 +26,10 @@ func TestAPI_LoginThenListAssets(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role"}).AddRow(1, "integration", nil, "viewer"))
 
 	// GET /assets: List(10, 0) then Count()
-	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen FROM assets ORDER BY id LIMIT \$1 OFFSET \$2`).
+	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen, COALESCE\(network_name, ''\) FROM assets ORDER BY id LIMIT \$1 OFFSET \$2`).
 		WithArgs(10, 0).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen"}).
-			AddRow(1, "asset1", "desc1", "{}", nil))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen", "network_name"}).
+			AddRow(1, "asset1", "desc1", "{}", nil, ""))
 	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM assets`).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 

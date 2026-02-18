@@ -42,10 +42,10 @@ func TestAssetRepo_Get(t *testing.T) {
 	defer db.Close()
 
 	now := time.Now()
-	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen FROM assets WHERE id=\$1`).
+	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen, COALESCE\(network_name, ''\) FROM assets WHERE id=\$1`).
 		WithArgs(1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen"}).
-			AddRow(1, "a1", "desc1", "{}", now))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen", "network_name"}).
+			AddRow(1, "a1", "desc1", "{}", now, ""))
 
 	repo := NewAssetRepo(db)
 	asset, err := repo.Get(context.Background(), 1)
@@ -67,7 +67,7 @@ func TestAssetRepo_Get_NotFound(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen FROM assets WHERE id=\$1`).
+	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen, COALESCE\(network_name, ''\) FROM assets WHERE id=\$1`).
 		WithArgs(999).
 		WillReturnError(sql.ErrNoRows)
 
@@ -91,11 +91,11 @@ func TestAssetRepo_List(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen FROM assets ORDER BY id LIMIT \$1 OFFSET \$2`).
+	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen, COALESCE\(network_name, ''\) FROM assets ORDER BY id LIMIT \$1 OFFSET \$2`).
 		WithArgs(10, 0).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen"}).
-			AddRow(1, "n1", "d1", "{}", nil).
-			AddRow(2, "n2", "d2", "{}", nil))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen", "network_name"}).
+			AddRow(1, "n1", "d1", "{}", nil, "").
+			AddRow(2, "n2", "d2", "{}", nil, ""))
 
 	repo := NewAssetRepo(db)
 	assets, err := repo.List(context.Background(), 10, 0)
@@ -143,10 +143,10 @@ func TestAssetRepo_Heartbeat(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	now := time.Now()
-	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen FROM assets WHERE id=\$1`).
+	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen, COALESCE\(network_name, ''\) FROM assets WHERE id=\$1`).
 		WithArgs(1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen"}).
-			AddRow(1, "a1", "d1", "{}", now))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen", "network_name"}).
+			AddRow(1, "a1", "d1", "{}", now, ""))
 
 	repo := NewAssetRepo(db)
 	asset, err := repo.Heartbeat(context.Background(), 1)

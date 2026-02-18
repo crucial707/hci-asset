@@ -39,10 +39,10 @@ func TestAssetHandler_ListAssets(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen FROM assets ORDER BY id LIMIT \$1 OFFSET \$2`).
+	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen, COALESCE\(network_name, ''\) FROM assets ORDER BY id LIMIT \$1 OFFSET \$2`).
 		WithArgs(10, 0).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen"}).
-			AddRow(1, "asset1", "desc1", "{}", nil))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen", "network_name"}).
+			AddRow(1, "asset1", "desc1", "{}", nil, ""))
 	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM assets`).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 
@@ -82,10 +82,10 @@ func TestAssetHandler_GetAsset(t *testing.T) {
 	defer db.Close()
 
 	now := time.Now()
-	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen FROM assets WHERE id=\$1`).
+	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen, COALESCE\(network_name, ''\) FROM assets WHERE id=\$1`).
 		WithArgs(1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen"}).
-			AddRow(1, "myasset", "mydesc", "{}", now))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "description", "tags", "last_seen", "network_name"}).
+			AddRow(1, "myasset", "mydesc", "{}", now, ""))
 
 	assetRepo := repo.NewAssetRepo(db)
 	h := &AssetHandler{Repo: assetRepo}
@@ -120,7 +120,7 @@ func TestAssetHandler_GetAsset_NotFound(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen FROM assets WHERE id=\$1`).
+	mock.ExpectQuery(`SELECT id, name, description, COALESCE\(tags, '{}'\), last_seen, COALESCE\(network_name, ''\) FROM assets WHERE id=\$1`).
 		WithArgs(999).
 		WillReturnError(sql.ErrNoRows)
 
