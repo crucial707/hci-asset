@@ -27,6 +27,7 @@
     </a>
   </div>
   <h1>Log in</h1>
+  {{if .Message}}<p class="error">{{.Message}}</p>{{end}}
   {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
   <form class="login-form" method="post" action="/login">
     <label for="username">Username</label>

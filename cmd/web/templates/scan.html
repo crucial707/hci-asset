@@ -2,7 +2,6 @@
 {{define "content"}}
 <h1>Active Scans</h1>
 <p>Start a one-off scan or run a <a href="/saved-scans">saved scan</a>. Clear the list below to start fresh.</p>
-{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
 <form method="post" action="/scans">
   <label for="target">Target (IP, range, or CIDR)</label>
   <input type="text" id="target" name="target" placeholder="e.g. 192.168.1.0/24" required>

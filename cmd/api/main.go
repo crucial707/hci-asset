@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	_ "github.com/lib/pq"
 
 	"github.com/crucial707/hci-asset/internal/config"
@@ -136,7 +137,9 @@ func newRouter(db *sql.DB, cfg config.Config) (*chi.Mux, *handlers.ScanHandler, 
 	r.Use(middleware.Recoverer)
 	r.Use(chimw.RequestID)
 	r.Use(middleware.RequestLog)
+	r.Use(middleware.Prometheus)
 
+	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok"))
 	})
@@ -170,6 +173,7 @@ func newRouter(db *sql.DB, cfg config.Config) (*chi.Mux, *handlers.ScanHandler, 
 		// Viewer (and admin): read-only
 		r.With(jwtMiddleware).Get("/assets", assetHandler.ListAssets)
 		r.With(jwtMiddleware).Get("/assets/{id}", assetHandler.GetAsset)
+		r.With(jwtMiddleware).Get("/me", userHandler.Me)
 		r.With(jwtMiddleware).Get("/users", userHandler.ListUsers)
 		r.With(jwtMiddleware).Get("/users/{id}", userHandler.GetUser)
 		r.With(jwtMiddleware).Get("/audit", auditHandler.ListAudit)

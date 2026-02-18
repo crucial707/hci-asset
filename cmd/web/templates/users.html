@@ -1,8 +1,8 @@
 {{define "title"}}Users{{end}}
 {{define "content"}}
 <h1>Users</h1>
-{{if .Error}}<p class="error">{{.Error}}</p>{{else}}
 <p><a href="/users/new">+ Add user</a></p>
+{{if .Users}}
 <table>
   <thead><tr><th>ID</th><th>Username</th><th>Role</th><th></th></tr></thead>
   <tbody>
@@ -14,6 +14,7 @@
   </tr>{{end}}
   </tbody>
 </table>
-{{if not .Users}}<p>No users.</p>{{end}}
+{{else}}
+<p>No users.</p>
 {{end}}
 {{end}}

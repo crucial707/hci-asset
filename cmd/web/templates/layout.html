@@ -36,6 +36,15 @@
     nav a { margin-right: 0; }
     .nav-spacer { margin-left: auto; }
     .error { color: #c00; }
+    .global-error {
+      background: #fdd;
+      border: 1px solid #c00;
+      border-radius: 4px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1rem;
+      color: #800;
+    }
+    .field-error { font-size: 0.9rem; color: #c00; display: block; margin-top: 0.25rem; }
     table { width: 100%; }
     th, td { text-align: left; padding: 0.5rem; }
     main { min-height: 40vh; }
@@ -67,11 +76,25 @@
     <a href="/schedules">Schedules</a>
     <a href="/audit">Audit log</a>
     <span class="nav-spacer"></span>
+    {{if .User}}<span class="nav-user">Logged in as <strong>{{.User.Username}}</strong> ({{.User.Role}})</span>{{end}}
     <a href="/logout">Log out</a>
   </nav>
   <main>
+  {{if .Error}}<div class="global-error" role="alert">{{.Error}}</div>{{end}}
   {{template "content" .}}
   </main>
+  <script>
+  document.querySelectorAll('form').forEach(function(f) {
+    f.addEventListener('submit', function() {
+      var btn = f.querySelector('button[type="submit"]');
+      if (btn && !btn.disabled) {
+        btn.disabled = true;
+        btn.dataset.originalText = btn.textContent;
+        btn.textContent = btn.dataset.loadingText || 'Saving...';
+      }
+    });
+  });
+  </script>
   <footer class="page-footer">
     Humboldt Cyber Intelligence · Asset inventory &amp; security
   </footer>

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -123,7 +124,19 @@ func formatDuration(d time.Duration) string {
 	return d.String()
 }
 
+// contextKey type for request context keys.
+type contextKey int
+
+const userContextKey contextKey = 0
+
+// currentUser is stored in context for session display in the layout.
+type currentUser struct {
+	Username string `json:"username"`
+	Role     string `json:"role"`
+}
+
 // requireAuth redirects to /login if cookie is missing or if the API returns 401 (invalid/expired token).
+// On success, fetches current user from GET /me and stores in context for layout (Logged in as ...).
 func requireAuth(apiBase string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -132,11 +145,19 @@ func requireAuth(apiBase string) func(http.Handler) http.Handler {
 				http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.Path), http.StatusFound)
 				return
 			}
-			// Validate token with API so expired/invalid tokens send user to login before any page loads.
-			_, status, _ := apiGet(apiBase, "/assets?limit=1", token.Value)
+			data, status, _ := apiGet(apiBase, "/me", token.Value)
 			if status == http.StatusUnauthorized {
-				clearAuthAndRedirectToLogin(w, r)
+				clearAuthAndRedirectToLogin(w, r, "Session expired. Please sign in again.")
 				return
+			}
+			if status == http.StatusOK {
+				var u struct {
+					Username string `json:"username"`
+					Role     string `json:"role"`
+				}
+				if json.Unmarshal(data, &u) == nil {
+					r = r.WithContext(context.WithValue(r.Context(), userContextKey, &currentUser{Username: u.Username, Role: u.Role}))
+				}
 			}
 			next.ServeHTTP(w, r)
 		})
@@ -152,7 +173,11 @@ func loginForm(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
 		return
 	}
-	renderTemplate(w, "login.html", nil)
+	data := map[string]interface{}{}
+	if msg := r.URL.Query().Get("msg"); msg != "" {
+		data["Message"] = msg
+	}
+	renderTemplate(w, r, "login.html", data)
 }
 
 func loginSubmit(apiBase string) http.HandlerFunc {
@@ -163,7 +188,7 @@ func loginSubmit(apiBase string) http.HandlerFunc {
 		}
 		username := strings.TrimSpace(r.FormValue("username"))
 		if username == "" {
-			renderTemplate(w, "login.html", map[string]string{"Error": "Username is required"})
+			renderTemplate(w, r, "login.html", map[string]string{"Error": "Username is required"})
 			return
 		}
 		password := r.FormValue("password")
@@ -179,7 +204,7 @@ func loginSubmit(apiBase string) http.HandlerFunc {
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			renderTemplate(w, "login.html", map[string]string{"Error": "Cannot reach API: " + err.Error()})
+			renderTemplate(w, r, "login.html", map[string]string{"Error": "Cannot reach API: " + err.Error()})
 			return
 		}
 		defer resp.Body.Close()
@@ -192,7 +217,7 @@ func loginSubmit(apiBase string) http.HandlerFunc {
 			if msg == "" {
 				msg = string(data)
 			}
-			renderTemplate(w, "login.html", map[string]string{"Error": msg})
+			renderTemplate(w, r, "login.html", map[string]string{"Error": msg})
 			return
 		}
 
@@ -200,7 +225,7 @@ func loginSubmit(apiBase string) http.HandlerFunc {
 			Token string `json:"token"`
 		}
 		if err := json.Unmarshal(data, &out); err != nil || out.Token == "" {
-			renderTemplate(w, "login.html", map[string]string{"Error": "Invalid login response"})
+			renderTemplate(w, r, "login.html", map[string]string{"Error": "Invalid login response"})
 			return
 		}
 
@@ -227,14 +252,18 @@ func logout(w http.ResponseWriter, r *http.Request) {
 }
 
 // clearAuthAndRedirectToLogin clears the token cookie and redirects to login with next=current path.
-// Call when the API returns 401 (expired or invalid token) so the user can sign in again.
-func clearAuthAndRedirectToLogin(w http.ResponseWriter, r *http.Request) {
+// If msg is non-empty, adds msg= to the login URL so the login page can show it (e.g. "Session expired").
+func clearAuthAndRedirectToLogin(w http.ResponseWriter, r *http.Request, msg string) {
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", MaxAge: -1})
 	next := r.URL.Path
 	if r.URL.RawQuery != "" {
-		next += "?" + r.URL.RawQuery
+		next = next + "?" + r.URL.RawQuery
 	}
-	http.Redirect(w, r, "/login?next="+url.QueryEscape(next), http.StatusFound)
+	loc := "/login?next=" + url.QueryEscape(next)
+	if msg != "" {
+		loc += "&msg=" + url.QueryEscape(msg)
+	}
+	http.Redirect(w, r, loc, http.StatusFound)
 }
 
 // apiGet performs GET to API with token from request cookie.
@@ -309,15 +338,15 @@ func dashboard(apiBase string) http.HandlerFunc {
 
 		data, status, err := apiGet(apiBase, "/assets?limit=1000", tok)
 		if err != nil {
-			renderTemplate(w, "dashboard.html", map[string]interface{}{"Error": err.Error()})
+			renderTemplate(w, r, "dashboard.html", map[string]interface{}{"Error": err.Error()})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "dashboard.html", map[string]interface{}{"Error": "API error: " + string(data)})
+			renderTemplate(w, r, "dashboard.html", map[string]interface{}{"Error": "API error: " + string(data)})
 			return
 		}
 
@@ -331,11 +360,11 @@ func dashboard(apiBase string) http.HandlerFunc {
 			Total int `json:"total"`
 		}
 		if err := json.Unmarshal(data, &listResp); err != nil {
-			renderTemplate(w, "dashboard.html", map[string]interface{}{"Error": "Invalid assets response"})
+			renderTemplate(w, r, "dashboard.html", map[string]interface{}{"Error": "Invalid assets response"})
 			return
 		}
 
-		renderTemplate(w, "dashboard.html", map[string]interface{}{
+		renderTemplate(w, r, "dashboard.html", map[string]interface{}{
 			"AssetCount": listResp.Total,
 			"Assets":    listResp.Items,
 		})
@@ -371,15 +400,15 @@ func assetsList(apiBase string) http.HandlerFunc {
 
 		data, status, err := apiGet(apiBase, path, tok)
 		if err != nil {
-			renderTemplate(w, "assets.html", map[string]interface{}{"Error": err.Error(), "SearchQuery": search, "TagFilter": tagFilter, "Page": page})
+			renderTemplate(w, r, "assets.html", map[string]interface{}{"Error": err.Error(), "SearchQuery": search, "TagFilter": tagFilter, "Page": page})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "assets.html", map[string]interface{}{"Error": "API error: " + string(data), "SearchQuery": search, "TagFilter": tagFilter, "Page": page})
+			renderTemplate(w, r, "assets.html", map[string]interface{}{"Error": "API error: " + string(data), "SearchQuery": search, "TagFilter": tagFilter, "Page": page})
 			return
 		}
 
@@ -397,7 +426,7 @@ func assetsList(apiBase string) http.HandlerFunc {
 			Offset int `json:"offset"`
 		}
 		if err := json.Unmarshal(data, &listResp); err != nil {
-			renderTemplate(w, "assets.html", map[string]interface{}{"Error": "Invalid assets response", "SearchQuery": search, "TagFilter": tagFilter, "Page": page})
+			renderTemplate(w, r, "assets.html", map[string]interface{}{"Error": "Invalid assets response", "SearchQuery": search, "TagFilter": tagFilter, "Page": page})
 			return
 		}
 		assets := listResp.Items
@@ -414,7 +443,7 @@ func assetsList(apiBase string) http.HandlerFunc {
 		searchEncoded := url.QueryEscape(search)
 		tagEncoded := url.QueryEscape(tagFilter)
 
-		renderTemplate(w, "assets.html", map[string]interface{}{
+		renderTemplate(w, r, "assets.html", map[string]interface{}{
 			"Assets":        assets,
 			"SearchQuery":   search,
 			"SearchEncoded": searchEncoded,
@@ -438,15 +467,15 @@ func assetDetail(apiBase string) http.HandlerFunc {
 
 		data, status, err := apiGet(apiBase, "/assets/"+id, tok)
 		if err != nil {
-			renderTemplate(w, "asset_detail.html", map[string]interface{}{"Error": err.Error()})
+			renderTemplate(w, r, "asset_detail.html", map[string]interface{}{"Error": err.Error()})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "asset_detail.html", map[string]interface{}{"Error": "API error: " + string(data)})
+			renderTemplate(w, r, "asset_detail.html", map[string]interface{}{"Error": "API error: " + string(data)})
 			return
 		}
 
@@ -459,12 +488,12 @@ func assetDetail(apiBase string) http.HandlerFunc {
 			LastSeen    *string  `json:"last_seen"`
 		}
 		if err := json.Unmarshal(data, &asset); err != nil {
-			renderTemplate(w, "asset_detail.html", map[string]interface{}{"Error": "Invalid asset response"})
+			renderTemplate(w, r, "asset_detail.html", map[string]interface{}{"Error": "Invalid asset response"})
 			return
 		}
 
 		heartbeatError := r.URL.Query().Get("heartbeat_error") == "1"
-		renderTemplate(w, "asset_detail.html", map[string]interface{}{
+		renderTemplate(w, r, "asset_detail.html", map[string]interface{}{
 			"Asset":         asset,
 			"HeartbeatError": heartbeatError,
 		})
@@ -482,11 +511,11 @@ func assetHeartbeat(apiBase string) http.HandlerFunc {
 
 		_, status, err := apiPost(apiBase, "/assets/"+id+"/heartbeat", tok, []byte("{}"))
 		if err != nil {
-			renderTemplate(w, "asset_detail.html", map[string]interface{}{"Error": err.Error()})
+			renderTemplate(w, r, "asset_detail.html", map[string]interface{}{"Error": err.Error()})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
@@ -502,7 +531,7 @@ func assetHeartbeat(apiBase string) http.HandlerFunc {
 
 func assetCreateForm(apiBase string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		renderTemplate(w, "asset_form.html", map[string]interface{}{
+		renderTemplate(w, r, "asset_form.html", map[string]interface{}{
 			"FormAction":  "/assets",
 			"SubmitLabel": "Create asset",
 		})
@@ -532,7 +561,7 @@ func assetCreate(apiBase string) http.HandlerFunc {
 		tags := parseTagsFromForm(r.FormValue("tags"))
 
 		if name == "" || description == "" {
-			renderTemplate(w, "asset_form.html", map[string]interface{}{
+			renderTemplate(w, r, "asset_form.html", map[string]interface{}{
 				"Error":       "Name and description are required",
 				"FormAction":  "/assets",
 				"SubmitLabel": "Create asset",
@@ -553,7 +582,7 @@ func assetCreate(apiBase string) http.HandlerFunc {
 		body, _ := json.Marshal(payload)
 		data, status, err := apiPost(apiBase, "/assets", tok, body)
 		if err != nil {
-			renderTemplate(w, "asset_form.html", map[string]interface{}{
+			renderTemplate(w, r, "asset_form.html", map[string]interface{}{
 				"Error":       err.Error(),
 				"FormAction":  "/assets",
 				"SubmitLabel": "Create asset",
@@ -561,11 +590,11 @@ func assetCreate(apiBase string) http.HandlerFunc {
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status < http.StatusOK || status >= http.StatusMultipleChoices {
-			renderTemplate(w, "asset_form.html", map[string]interface{}{
+			renderTemplate(w, r, "asset_form.html", map[string]interface{}{
 				"Error":       "API error: " + string(data),
 				"FormAction":  "/assets",
 				"SubmitLabel": "Create asset",
@@ -577,7 +606,7 @@ func assetCreate(apiBase string) http.HandlerFunc {
 			ID int `json:"id"`
 		}
 		if err := json.Unmarshal(data, &asset); err != nil || asset.ID == 0 {
-			renderTemplate(w, "asset_form.html", map[string]interface{}{
+			renderTemplate(w, r, "asset_form.html", map[string]interface{}{
 				"Error":       "Invalid create asset response",
 				"FormAction":  "/assets",
 				"SubmitLabel": "Create asset",
@@ -600,17 +629,17 @@ func assetEditForm(apiBase string) http.HandlerFunc {
 
 		data, status, err := apiGet(apiBase, "/assets/"+id, tok)
 		if err != nil {
-			renderTemplate(w, "asset_form.html", map[string]interface{}{
+			renderTemplate(w, r, "asset_form.html", map[string]interface{}{
 				"Error": err.Error(),
 			})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "asset_form.html", map[string]interface{}{
+			renderTemplate(w, r, "asset_form.html", map[string]interface{}{
 				"Error": "API error: " + string(data),
 			})
 			return
@@ -625,13 +654,13 @@ func assetEditForm(apiBase string) http.HandlerFunc {
 			LastSeen    *string  `json:"last_seen"`
 		}
 		if err := json.Unmarshal(data, &asset); err != nil {
-			renderTemplate(w, "asset_form.html", map[string]interface{}{
+			renderTemplate(w, r, "asset_form.html", map[string]interface{}{
 				"Error": "Invalid asset response",
 			})
 			return
 		}
 
-		renderTemplate(w, "asset_form.html", map[string]interface{}{
+		renderTemplate(w, r, "asset_form.html", map[string]interface{}{
 			"Asset":       asset,
 			"FormAction":  "/assets/" + id + "/edit",
 			"SubmitLabel": "Save changes",
@@ -651,7 +680,7 @@ func assetUpdate(apiBase string) http.HandlerFunc {
 		tags := parseTagsFromForm(r.FormValue("tags"))
 
 		if name == "" || description == "" {
-			renderTemplate(w, "asset_form.html", map[string]interface{}{
+			renderTemplate(w, r, "asset_form.html", map[string]interface{}{
 				"Error":       "Name and description are required",
 				"FormAction":  "/assets/" + id + "/edit",
 				"SubmitLabel": "Save changes",
@@ -669,7 +698,7 @@ func assetUpdate(apiBase string) http.HandlerFunc {
 		body, _ := json.Marshal(payload)
 		data, status, err := apiPut(apiBase, "/assets/"+id, tok, body)
 		if err != nil {
-			renderTemplate(w, "asset_form.html", map[string]interface{}{
+			renderTemplate(w, r, "asset_form.html", map[string]interface{}{
 				"Error":       err.Error(),
 				"FormAction":  "/assets/" + id + "/edit",
 				"SubmitLabel": "Save changes",
@@ -677,11 +706,11 @@ func assetUpdate(apiBase string) http.HandlerFunc {
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status < http.StatusOK || status >= http.StatusMultipleChoices {
-			renderTemplate(w, "asset_form.html", map[string]interface{}{
+			renderTemplate(w, r, "asset_form.html", map[string]interface{}{
 				"Error":       "API error: " + string(data),
 				"FormAction":  "/assets/" + id + "/edit",
 				"SubmitLabel": "Save changes",
@@ -693,7 +722,7 @@ func assetUpdate(apiBase string) http.HandlerFunc {
 			ID int `json:"id"`
 		}
 		if err := json.Unmarshal(data, &asset); err != nil || asset.ID == 0 {
-			renderTemplate(w, "asset_form.html", map[string]interface{}{
+			renderTemplate(w, r, "asset_form.html", map[string]interface{}{
 				"Error":       "Invalid update asset response",
 				"FormAction":  "/assets/" + id + "/edit",
 				"SubmitLabel": "Save changes",
@@ -716,15 +745,15 @@ func assetDeleteConfirm(apiBase string) http.HandlerFunc {
 
 		data, status, err := apiGet(apiBase, "/assets/"+id, tok)
 		if err != nil {
-			renderTemplate(w, "asset_delete_confirm.html", map[string]interface{}{"Error": err.Error(), "AssetID": id})
+			renderTemplate(w, r, "asset_delete_confirm.html", map[string]interface{}{"Error": err.Error(), "AssetID": id})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "asset_delete_confirm.html", map[string]interface{}{"Error": "Asset not found or API error", "AssetID": id})
+			renderTemplate(w, r, "asset_delete_confirm.html", map[string]interface{}{"Error": "Asset not found or API error", "AssetID": id})
 			return
 		}
 
@@ -733,11 +762,11 @@ func assetDeleteConfirm(apiBase string) http.HandlerFunc {
 			Name string `json:"name"`
 		}
 		if err := json.Unmarshal(data, &asset); err != nil {
-			renderTemplate(w, "asset_delete_confirm.html", map[string]interface{}{"Error": "Invalid asset response", "AssetID": id})
+			renderTemplate(w, r, "asset_delete_confirm.html", map[string]interface{}{"Error": "Invalid asset response", "AssetID": id})
 			return
 		}
 
-		renderTemplate(w, "asset_delete_confirm.html", map[string]interface{}{
+		renderTemplate(w, r, "asset_delete_confirm.html", map[string]interface{}{
 			"Asset": asset,
 		})
 	}
@@ -754,14 +783,14 @@ func assetDelete(apiBase string) http.HandlerFunc {
 
 		body, status, err := apiDelete(apiBase, "/assets/"+id, tok)
 		if err != nil {
-			renderTemplate(w, "asset_delete_confirm.html", map[string]interface{}{
+			renderTemplate(w, r, "asset_delete_confirm.html", map[string]interface{}{
 				"Error":   err.Error(),
 				"AssetID": id,
 			})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status == http.StatusNoContent {
@@ -773,7 +802,7 @@ func assetDelete(apiBase string) http.HandlerFunc {
 		if len(msg) > 200 {
 			msg = msg[:200] + "..."
 		}
-		renderTemplate(w, "asset_delete_confirm.html", map[string]interface{}{
+		renderTemplate(w, r, "asset_delete_confirm.html", map[string]interface{}{
 			"Error":   "Delete failed: " + msg,
 			"AssetID": id,
 		})
@@ -790,15 +819,15 @@ func scanPage(apiBase string) http.HandlerFunc {
 
 		data, status, err := apiGet(apiBase, "/scans", tok)
 		if err != nil {
-			renderTemplate(w, "scan.html", map[string]interface{}{"Error": err.Error()})
+			renderTemplate(w, r, "scan.html", map[string]interface{}{"Error": err.Error()})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "scan.html", map[string]interface{}{"Error": "API error: " + string(data)})
+			renderTemplate(w, r, "scan.html", map[string]interface{}{"Error": "API error: " + string(data)})
 			return
 		}
 
@@ -811,11 +840,11 @@ func scanPage(apiBase string) http.HandlerFunc {
 			} `json:"items"`
 		}
 		if err := json.Unmarshal(data, &listResp); err != nil {
-			renderTemplate(w, "scan.html", map[string]interface{}{})
+			renderTemplate(w, r, "scan.html", map[string]interface{}{})
 			return
 		}
 
-		renderTemplate(w, "scan.html", map[string]interface{}{
+		renderTemplate(w, r, "scan.html", map[string]interface{}{
 			"Scans": listResp.Items,
 		})
 	}
@@ -829,7 +858,7 @@ func startScan(apiBase string) http.HandlerFunc {
 		}
 		target := strings.TrimSpace(r.FormValue("target"))
 		if target == "" {
-			renderTemplate(w, "scan.html", map[string]interface{}{"Error": "Target is required (e.g. 192.168.1.0/24 or hostname)"})
+			renderTemplate(w, r, "scan.html", map[string]interface{}{"Error": "Target is required (e.g. 192.168.1.0/24 or hostname)"})
 			return
 		}
 
@@ -842,11 +871,11 @@ func startScan(apiBase string) http.HandlerFunc {
 		body := []byte(fmt.Sprintf(`{"target":%q}`, target))
 		data, status, err := apiPost(apiBase, "/scans", tok, body)
 		if err != nil {
-			renderTemplate(w, "scan.html", map[string]interface{}{"Error": err.Error()})
+			renderTemplate(w, r, "scan.html", map[string]interface{}{"Error": err.Error()})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
@@ -856,7 +885,7 @@ func startScan(apiBase string) http.HandlerFunc {
 			if msg == "" {
 				msg = string(data)
 			}
-			renderTemplate(w, "scan.html", map[string]interface{}{"Error": "API: " + msg})
+			renderTemplate(w, r, "scan.html", map[string]interface{}{"Error": "API: " + msg})
 			return
 		}
 
@@ -865,7 +894,7 @@ func startScan(apiBase string) http.HandlerFunc {
 			Status string `json:"status"`
 		}
 		if err := json.Unmarshal(data, &out); err != nil || out.JobID == "" {
-			renderTemplate(w, "scan.html", map[string]interface{}{"Error": "Invalid scan response"})
+			renderTemplate(w, r, "scan.html", map[string]interface{}{"Error": "Invalid scan response"})
 			return
 		}
 
@@ -884,19 +913,19 @@ func scanDetail(apiBase string) http.HandlerFunc {
 
 		data, status, err := apiGet(apiBase, "/scans/"+jobID, tok)
 		if err != nil {
-			renderTemplate(w, "scan_detail.html", map[string]interface{}{"Error": err.Error(), "JobID": jobID})
+			renderTemplate(w, r, "scan_detail.html", map[string]interface{}{"Error": err.Error(), "JobID": jobID})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status == http.StatusNotFound {
-			renderTemplate(w, "scan_detail.html", map[string]interface{}{"Error": "Scan job not found", "JobID": jobID})
+			renderTemplate(w, r, "scan_detail.html", map[string]interface{}{"Error": "Scan job not found", "JobID": jobID})
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "scan_detail.html", map[string]interface{}{"Error": "API error: " + string(data), "JobID": jobID})
+			renderTemplate(w, r, "scan_detail.html", map[string]interface{}{"Error": "API error: " + string(data), "JobID": jobID})
 			return
 		}
 
@@ -914,7 +943,7 @@ func scanDetail(apiBase string) http.HandlerFunc {
 			} `json:"assets"`
 		}
 		if err := json.Unmarshal(data, &job); err != nil {
-			renderTemplate(w, "scan_detail.html", map[string]interface{}{"Error": "Invalid scan response", "JobID": jobID})
+			renderTemplate(w, r, "scan_detail.html", map[string]interface{}{"Error": "Invalid scan response", "JobID": jobID})
 			return
 		}
 
@@ -939,7 +968,7 @@ func scanDetail(apiBase string) http.HandlerFunc {
 			"Duration": duration,
 			"AutoRefresh": job.Status == "running",
 		}
-		renderTemplate(w, "scan_detail.html", payload)
+		renderTemplate(w, r, "scan_detail.html", payload)
 	}
 }
 
@@ -958,7 +987,7 @@ func cancelScan(apiBase string) http.HandlerFunc {
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
@@ -986,7 +1015,7 @@ func clearScans(apiBase string) http.HandlerFunc {
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusNoContent {
@@ -1008,15 +1037,15 @@ func savedScansList(apiBase string) http.HandlerFunc {
 		}
 		data, status, err := apiGet(apiBase, "/saved-scans", tok)
 		if err != nil {
-			renderTemplate(w, "saved_scans.html", map[string]interface{}{"Error": err.Error()})
+			renderTemplate(w, r, "saved_scans.html", map[string]interface{}{"Error": err.Error()})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "saved_scans.html", map[string]interface{}{"Error": "API error: " + string(data)})
+			renderTemplate(w, r, "saved_scans.html", map[string]interface{}{"Error": "API error: " + string(data)})
 			return
 		}
 		var listResp struct {
@@ -1028,10 +1057,10 @@ func savedScansList(apiBase string) http.HandlerFunc {
 			} `json:"items"`
 		}
 		if err := json.Unmarshal(data, &listResp); err != nil {
-			renderTemplate(w, "saved_scans.html", map[string]interface{}{"Error": "Invalid response"})
+			renderTemplate(w, r, "saved_scans.html", map[string]interface{}{"Error": "Invalid response"})
 			return
 		}
-		renderTemplate(w, "saved_scans.html", map[string]interface{}{
+		renderTemplate(w, r, "saved_scans.html", map[string]interface{}{
 			"SavedScans": listResp.Items,
 		})
 	}
@@ -1039,7 +1068,7 @@ func savedScansList(apiBase string) http.HandlerFunc {
 
 func savedScanNewForm(apiBase string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		renderTemplate(w, "saved_scan_form.html", map[string]interface{}{
+		renderTemplate(w, r, "saved_scan_form.html", map[string]interface{}{
 			"FormAction":  "/saved-scans",
 			"SubmitLabel": "Save scan",
 		})
@@ -1055,7 +1084,7 @@ func savedScanCreate(apiBase string) http.HandlerFunc {
 		name := strings.TrimSpace(r.FormValue("name"))
 		target := strings.TrimSpace(r.FormValue("target"))
 		if name == "" || target == "" {
-			renderTemplate(w, "saved_scan_form.html", map[string]interface{}{
+			renderTemplate(w, r, "saved_scan_form.html", map[string]interface{}{
 				"Error":       "Name and target are required",
 				"FormAction":  "/saved-scans",
 				"SubmitLabel": "Save scan",
@@ -1072,13 +1101,13 @@ func savedScanCreate(apiBase string) http.HandlerFunc {
 		body, _ := json.Marshal(map[string]string{"name": name, "target": target})
 		data, status, err := apiPost(apiBase, "/saved-scans", tok, body)
 		if err != nil {
-			renderTemplate(w, "saved_scan_form.html", map[string]interface{}{
+			renderTemplate(w, r, "saved_scan_form.html", map[string]interface{}{
 				"Error": err.Error(), "FormAction": "/saved-scans", "SubmitLabel": "Save scan", "Name": name, "Target": target,
 			})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status < 200 || status >= 300 {
@@ -1088,7 +1117,7 @@ func savedScanCreate(apiBase string) http.HandlerFunc {
 			if msg == "" {
 				msg = string(data)
 			}
-			renderTemplate(w, "saved_scan_form.html", map[string]interface{}{
+			renderTemplate(w, r, "saved_scan_form.html", map[string]interface{}{
 				"Error": "API: " + msg, "FormAction": "/saved-scans", "SubmitLabel": "Save scan", "Name": name, "Target": target,
 			})
 			return
@@ -1107,15 +1136,15 @@ func savedScanEditForm(apiBase string) http.HandlerFunc {
 		}
 		data, status, err := apiGet(apiBase, "/saved-scans/"+id, tok)
 		if err != nil {
-			renderTemplate(w, "saved_scan_form.html", map[string]interface{}{"Error": err.Error(), "FormAction": "/saved-scans/" + id + "/edit", "SubmitLabel": "Save changes"})
+			renderTemplate(w, r, "saved_scan_form.html", map[string]interface{}{"Error": err.Error(), "FormAction": "/saved-scans/" + id + "/edit", "SubmitLabel": "Save changes"})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "saved_scan_form.html", map[string]interface{}{"Error": "Saved scan not found", "FormAction": "/saved-scans/" + id + "/edit", "SubmitLabel": "Save changes"})
+			renderTemplate(w, r, "saved_scan_form.html", map[string]interface{}{"Error": "Saved scan not found", "FormAction": "/saved-scans/" + id + "/edit", "SubmitLabel": "Save changes"})
 			return
 		}
 		var saved struct {
@@ -1124,10 +1153,10 @@ func savedScanEditForm(apiBase string) http.HandlerFunc {
 			Target string `json:"target"`
 		}
 		if err := json.Unmarshal(data, &saved); err != nil {
-			renderTemplate(w, "saved_scan_form.html", map[string]interface{}{"Error": "Invalid response"})
+			renderTemplate(w, r, "saved_scan_form.html", map[string]interface{}{"Error": "Invalid response"})
 			return
 		}
-		renderTemplate(w, "saved_scan_form.html", map[string]interface{}{
+		renderTemplate(w, r, "saved_scan_form.html", map[string]interface{}{
 			"Saved":      saved,
 			"FormAction": "/saved-scans/" + id + "/edit",
 			"SubmitLabel": "Save changes",
@@ -1145,7 +1174,7 @@ func savedScanUpdate(apiBase string) http.HandlerFunc {
 		name := strings.TrimSpace(r.FormValue("name"))
 		target := strings.TrimSpace(r.FormValue("target"))
 		if name == "" || target == "" {
-			renderTemplate(w, "saved_scan_form.html", map[string]interface{}{
+			renderTemplate(w, r, "saved_scan_form.html", map[string]interface{}{
 				"Error": "Name and target are required",
 				"Saved": map[string]interface{}{"ID": id, "Name": name, "Target": target},
 				"FormAction": "/saved-scans/" + id + "/edit",
@@ -1161,14 +1190,14 @@ func savedScanUpdate(apiBase string) http.HandlerFunc {
 		body, _ := json.Marshal(map[string]string{"name": name, "target": target})
 		data, status, err := apiPut(apiBase, "/saved-scans/"+id, tok, body)
 		if err != nil {
-			renderTemplate(w, "saved_scan_form.html", map[string]interface{}{
+			renderTemplate(w, r, "saved_scan_form.html", map[string]interface{}{
 				"Error": err.Error(), "Saved": map[string]interface{}{"ID": id, "Name": name, "Target": target},
 				"FormAction": "/saved-scans/" + id + "/edit", "SubmitLabel": "Save changes",
 			})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status < 200 || status >= 300 {
@@ -1178,7 +1207,7 @@ func savedScanUpdate(apiBase string) http.HandlerFunc {
 			if msg == "" {
 				msg = string(data)
 			}
-			renderTemplate(w, "saved_scan_form.html", map[string]interface{}{
+			renderTemplate(w, r, "saved_scan_form.html", map[string]interface{}{
 				"Error": "API: " + msg, "Saved": map[string]interface{}{"ID": id, "Name": name, "Target": target},
 				"FormAction": "/saved-scans/" + id + "/edit", "SubmitLabel": "Save changes",
 			})
@@ -1202,7 +1231,7 @@ func savedScanRun(apiBase string) http.HandlerFunc {
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
@@ -1230,11 +1259,11 @@ func savedScanDeleteConfirm(apiBase string) http.HandlerFunc {
 		}
 		data, status, err := apiGet(apiBase, "/saved-scans/"+id, tok)
 		if err != nil || status != http.StatusOK {
-			renderTemplate(w, "saved_scan_delete_confirm.html", map[string]interface{}{"Error": "Saved scan not found", "Saved": map[string]interface{}{"ID": id, "Name": "", "Target": ""}})
+			renderTemplate(w, r, "saved_scan_delete_confirm.html", map[string]interface{}{"Error": "Saved scan not found", "Saved": map[string]interface{}{"ID": id, "Name": "", "Target": ""}})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		var saved struct {
@@ -1243,10 +1272,10 @@ func savedScanDeleteConfirm(apiBase string) http.HandlerFunc {
 			Target string `json:"target"`
 		}
 		if err := json.Unmarshal(data, &saved); err != nil {
-			renderTemplate(w, "saved_scan_delete_confirm.html", map[string]interface{}{"Error": "Invalid response"})
+			renderTemplate(w, r, "saved_scan_delete_confirm.html", map[string]interface{}{"Error": "Invalid response"})
 			return
 		}
-		renderTemplate(w, "saved_scan_delete_confirm.html", map[string]interface{}{"Saved": saved})
+		renderTemplate(w, r, "saved_scan_delete_confirm.html", map[string]interface{}{"Saved": saved})
 	}
 }
 
@@ -1260,11 +1289,11 @@ func savedScanDelete(apiBase string) http.HandlerFunc {
 		}
 		_, status, err := apiDelete(apiBase, "/saved-scans/"+id, tok)
 		if err != nil {
-			renderTemplate(w, "saved_scan_delete_confirm.html", map[string]interface{}{"Error": err.Error(), "Saved": map[string]interface{}{"ID": id}})
+			renderTemplate(w, r, "saved_scan_delete_confirm.html", map[string]interface{}{"Error": err.Error(), "Saved": map[string]interface{}{"ID": id}})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status == http.StatusNoContent {
@@ -1287,15 +1316,15 @@ func schedulesList(apiBase string) http.HandlerFunc {
 
 		data, status, err := apiGet(apiBase, "/schedules?limit=100", tok)
 		if err != nil {
-			renderTemplate(w, "schedules.html", map[string]interface{}{"Error": err.Error()})
+			renderTemplate(w, r, "schedules.html", map[string]interface{}{"Error": err.Error()})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "schedules.html", map[string]interface{}{"Error": "API error: " + string(data)})
+			renderTemplate(w, r, "schedules.html", map[string]interface{}{"Error": "API error: " + string(data)})
 			return
 		}
 
@@ -1309,17 +1338,17 @@ func schedulesList(apiBase string) http.HandlerFunc {
 			} `json:"items"`
 		}
 		if err := json.Unmarshal(data, &listResp); err != nil {
-			renderTemplate(w, "schedules.html", map[string]interface{}{"Error": "Invalid schedules response"})
+			renderTemplate(w, r, "schedules.html", map[string]interface{}{"Error": "Invalid schedules response"})
 			return
 		}
 
-		renderTemplate(w, "schedules.html", map[string]interface{}{"Schedules": listResp.Items})
+		renderTemplate(w, r, "schedules.html", map[string]interface{}{"Schedules": listResp.Items})
 	}
 }
 
 func scheduleCreateForm(apiBase string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		renderTemplate(w, "schedule_form.html", map[string]interface{}{
+		renderTemplate(w, r, "schedule_form.html", map[string]interface{}{
 			"FormAction":  "/schedules",
 			"SubmitLabel": "Create schedule",
 		})
@@ -1337,7 +1366,7 @@ func scheduleCreate(apiBase string) http.HandlerFunc {
 		enabled := r.FormValue("enabled") == "1"
 
 		if target == "" || cronExpr == "" {
-			renderTemplate(w, "schedule_form.html", map[string]interface{}{
+			renderTemplate(w, r, "schedule_form.html", map[string]interface{}{
 				"Error":       "Target and cron expression are required",
 				"FormAction":  "/schedules",
 				"SubmitLabel": "Create schedule",
@@ -1355,7 +1384,7 @@ func scheduleCreate(apiBase string) http.HandlerFunc {
 		body, _ := json.Marshal(payload)
 		data, status, err := apiPost(apiBase, "/schedules", tok, body)
 		if err != nil {
-			renderTemplate(w, "schedule_form.html", map[string]interface{}{
+			renderTemplate(w, r, "schedule_form.html", map[string]interface{}{
 				"Error":       err.Error(),
 				"FormAction":  "/schedules",
 				"SubmitLabel": "Create schedule",
@@ -1363,11 +1392,11 @@ func scheduleCreate(apiBase string) http.HandlerFunc {
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusCreated && status != http.StatusOK {
-			renderTemplate(w, "schedule_form.html", map[string]interface{}{
+			renderTemplate(w, r, "schedule_form.html", map[string]interface{}{
 				"Error":       "API error: " + string(data),
 				"FormAction":  "/schedules",
 				"SubmitLabel": "Create schedule",
@@ -1390,15 +1419,15 @@ func scheduleEditForm(apiBase string) http.HandlerFunc {
 
 		data, status, err := apiGet(apiBase, "/schedules/"+id, tok)
 		if err != nil {
-			renderTemplate(w, "schedule_form.html", map[string]interface{}{"Error": err.Error()})
+			renderTemplate(w, r, "schedule_form.html", map[string]interface{}{"Error": err.Error()})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "schedule_form.html", map[string]interface{}{"Error": "API error: " + string(data)})
+			renderTemplate(w, r, "schedule_form.html", map[string]interface{}{"Error": "API error: " + string(data)})
 			return
 		}
 
@@ -1410,11 +1439,11 @@ func scheduleEditForm(apiBase string) http.HandlerFunc {
 			CreatedAt time.Time `json:"created_at"`
 		}
 		if err := json.Unmarshal(data, &schedule); err != nil {
-			renderTemplate(w, "schedule_form.html", map[string]interface{}{"Error": "Invalid schedule response"})
+			renderTemplate(w, r, "schedule_form.html", map[string]interface{}{"Error": "Invalid schedule response"})
 			return
 		}
 
-		renderTemplate(w, "schedule_form.html", map[string]interface{}{
+		renderTemplate(w, r, "schedule_form.html", map[string]interface{}{
 			"Schedule":    schedule,
 			"FormAction":  "/schedules/" + id + "/edit",
 			"SubmitLabel": "Save changes",
@@ -1434,7 +1463,7 @@ func scheduleUpdate(apiBase string) http.HandlerFunc {
 		enabled := r.FormValue("enabled") == "1"
 
 		if target == "" || cronExpr == "" {
-			renderTemplate(w, "schedule_form.html", map[string]interface{}{
+			renderTemplate(w, r, "schedule_form.html", map[string]interface{}{
 				"Error":       "Target and cron expression are required",
 				"FormAction":  "/schedules/" + id + "/edit",
 				"SubmitLabel": "Save changes",
@@ -1452,7 +1481,7 @@ func scheduleUpdate(apiBase string) http.HandlerFunc {
 		body, _ := json.Marshal(payload)
 		_, status, err := apiPut(apiBase, "/schedules/"+id, tok, body)
 		if err != nil {
-			renderTemplate(w, "schedule_form.html", map[string]interface{}{
+			renderTemplate(w, r, "schedule_form.html", map[string]interface{}{
 				"Error":       err.Error(),
 				"FormAction":  "/schedules/" + id + "/edit",
 				"SubmitLabel": "Save changes",
@@ -1460,7 +1489,7 @@ func scheduleUpdate(apiBase string) http.HandlerFunc {
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
@@ -1482,15 +1511,15 @@ func scheduleDeleteConfirm(apiBase string) http.HandlerFunc {
 
 		data, status, err := apiGet(apiBase, "/schedules/"+id, tok)
 		if err != nil {
-			renderTemplate(w, "schedule_delete_confirm.html", map[string]interface{}{"Error": err.Error(), "ScheduleID": id})
+			renderTemplate(w, r, "schedule_delete_confirm.html", map[string]interface{}{"Error": err.Error(), "ScheduleID": id})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "schedule_delete_confirm.html", map[string]interface{}{"Error": "Schedule not found or API error", "ScheduleID": id})
+			renderTemplate(w, r, "schedule_delete_confirm.html", map[string]interface{}{"Error": "Schedule not found or API error", "ScheduleID": id})
 			return
 		}
 
@@ -1500,11 +1529,11 @@ func scheduleDeleteConfirm(apiBase string) http.HandlerFunc {
 			CronExpr string `json:"cron_expr"`
 		}
 		if err := json.Unmarshal(data, &schedule); err != nil {
-			renderTemplate(w, "schedule_delete_confirm.html", map[string]interface{}{"Error": "Invalid schedule response", "ScheduleID": id})
+			renderTemplate(w, r, "schedule_delete_confirm.html", map[string]interface{}{"Error": "Invalid schedule response", "ScheduleID": id})
 			return
 		}
 
-		renderTemplate(w, "schedule_delete_confirm.html", map[string]interface{}{"Schedule": schedule})
+		renderTemplate(w, r, "schedule_delete_confirm.html", map[string]interface{}{"Schedule": schedule})
 	}
 }
 
@@ -1519,18 +1548,18 @@ func scheduleDelete(apiBase string) http.HandlerFunc {
 
 		_, status, err := apiDelete(apiBase, "/schedules/"+id, tok)
 		if err != nil {
-			renderTemplate(w, "schedule_delete_confirm.html", map[string]interface{}{"Error": err.Error(), "ScheduleID": id})
+			renderTemplate(w, r, "schedule_delete_confirm.html", map[string]interface{}{"Error": err.Error(), "ScheduleID": id})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status == http.StatusNoContent || status == http.StatusOK {
 			http.Redirect(w, r, "/schedules", http.StatusFound)
 			return
 		}
-		renderTemplate(w, "schedule_delete_confirm.html", map[string]interface{}{"Error": "Delete failed", "ScheduleID": id})
+		renderTemplate(w, r, "schedule_delete_confirm.html", map[string]interface{}{"Error": "Delete failed", "ScheduleID": id})
 	}
 }
 
@@ -1561,15 +1590,15 @@ func auditList(apiBase string) http.HandlerFunc {
 		path := fmt.Sprintf("/audit?limit=%d&offset=%d", limit, offset)
 		data, status, err := apiGet(apiBase, path, tok)
 		if err != nil {
-			renderTemplate(w, "audit.html", map[string]interface{}{"Error": err.Error()})
+			renderTemplate(w, r, "audit.html", map[string]interface{}{"Error": err.Error()})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "audit.html", map[string]interface{}{"Error": "API error: " + string(data)})
+			renderTemplate(w, r, "audit.html", map[string]interface{}{"Error": "API error: " + string(data)})
 			return
 		}
 
@@ -1588,7 +1617,7 @@ func auditList(apiBase string) http.HandlerFunc {
 			Offset int `json:"offset"`
 		}
 		if err := json.Unmarshal(data, &listResp); err != nil {
-			renderTemplate(w, "audit.html", map[string]interface{}{"Error": "Invalid audit response"})
+			renderTemplate(w, r, "audit.html", map[string]interface{}{"Error": "Invalid audit response"})
 			return
 		}
 		entries := listResp.Items
@@ -1603,7 +1632,7 @@ func auditList(apiBase string) http.HandlerFunc {
 		}
 		nextOffset := offset + limit
 
-		renderTemplate(w, "audit.html", map[string]interface{}{
+		renderTemplate(w, r, "audit.html", map[string]interface{}{
 			"Entries":    entries,
 			"Limit":      limit,
 			"Offset":     offset,
@@ -1627,15 +1656,15 @@ func usersList(apiBase string) http.HandlerFunc {
 
 		data, status, err := apiGet(apiBase, "/users", tok)
 		if err != nil {
-			renderTemplate(w, "users.html", map[string]interface{}{"Error": err.Error()})
+			renderTemplate(w, r, "users.html", map[string]interface{}{"Error": err.Error()})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "users.html", map[string]interface{}{"Error": "API error: " + string(data)})
+			renderTemplate(w, r, "users.html", map[string]interface{}{"Error": "API error: " + string(data)})
 			return
 		}
 
@@ -1647,11 +1676,11 @@ func usersList(apiBase string) http.HandlerFunc {
 			} `json:"items"`
 		}
 		if err := json.Unmarshal(data, &listResp); err != nil {
-			renderTemplate(w, "users.html", map[string]interface{}{"Error": "Invalid users response"})
+			renderTemplate(w, r, "users.html", map[string]interface{}{"Error": "Invalid users response"})
 			return
 		}
 
-		renderTemplate(w, "users.html", map[string]interface{}{
+		renderTemplate(w, r, "users.html", map[string]interface{}{
 			"Users": listResp.Items,
 		})
 	}
@@ -1659,7 +1688,7 @@ func usersList(apiBase string) http.HandlerFunc {
 
 func userCreateForm(apiBase string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		renderTemplate(w, "user_form.html", map[string]interface{}{
+		renderTemplate(w, r, "user_form.html", map[string]interface{}{
 			"FormAction":  "/users",
 			"SubmitLabel": "Create user",
 			"IsCreate":    true,
@@ -1679,7 +1708,7 @@ func userCreate(apiBase string) http.HandlerFunc {
 			role = "viewer"
 		}
 		if username == "" {
-			renderTemplate(w, "user_form.html", map[string]interface{}{
+			renderTemplate(w, r, "user_form.html", map[string]interface{}{
 				"Error":       "Username is required",
 				"FormAction":  "/users",
 				"SubmitLabel": "Create user",
@@ -1697,7 +1726,7 @@ func userCreate(apiBase string) http.HandlerFunc {
 		body := []byte(fmt.Sprintf(`{"username":%q,"role":%q}`, username, role))
 		data, status, err := apiPost(apiBase, "/users", tok, body)
 		if err != nil {
-			renderTemplate(w, "user_form.html", map[string]interface{}{
+			renderTemplate(w, r, "user_form.html", map[string]interface{}{
 				"Error":       err.Error(),
 				"FormAction":  "/users",
 				"SubmitLabel": "Create user",
@@ -1705,21 +1734,29 @@ func userCreate(apiBase string) http.HandlerFunc {
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status < http.StatusOK || status >= http.StatusMultipleChoices {
-			var errResp struct{ Error string }
+			var errResp struct {
+				Error  string            `json:"error"`
+				Fields map[string]string `json:"fields"`
+			}
 			_ = json.Unmarshal(data, &errResp)
 			msg := errResp.Error
 			if msg == "" {
 				msg = string(data)
 			}
-			renderTemplate(w, "user_form.html", map[string]interface{}{
+			payload := map[string]interface{}{
 				"Error":       "API: " + msg,
 				"FormAction":  "/users",
 				"SubmitLabel": "Create user",
-			})
+				"IsCreate":    true,
+			}
+			if len(errResp.Fields) > 0 {
+				payload["Fields"] = errResp.Fields
+			}
+			renderTemplate(w, r, "user_form.html", payload)
 			return
 		}
 
@@ -1727,7 +1764,7 @@ func userCreate(apiBase string) http.HandlerFunc {
 			ID int `json:"id"`
 		}
 		if err := json.Unmarshal(data, &user); err != nil || user.ID == 0 {
-			renderTemplate(w, "user_form.html", map[string]interface{}{
+			renderTemplate(w, r, "user_form.html", map[string]interface{}{
 				"Error":       "Invalid create user response",
 				"FormAction":  "/users",
 				"SubmitLabel": "Create user",
@@ -1750,15 +1787,15 @@ func userEditForm(apiBase string) http.HandlerFunc {
 
 		data, status, err := apiGet(apiBase, "/users/"+id, tok)
 		if err != nil {
-			renderTemplate(w, "user_form.html", map[string]interface{}{"Error": err.Error()})
+			renderTemplate(w, r, "user_form.html", map[string]interface{}{"Error": err.Error()})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "user_form.html", map[string]interface{}{"Error": "API error: " + string(data)})
+			renderTemplate(w, r, "user_form.html", map[string]interface{}{"Error": "API error: " + string(data)})
 			return
 		}
 
@@ -1768,11 +1805,11 @@ func userEditForm(apiBase string) http.HandlerFunc {
 			Role     string `json:"role"`
 		}
 		if err := json.Unmarshal(data, &user); err != nil {
-			renderTemplate(w, "user_form.html", map[string]interface{}{"Error": "Invalid user response"})
+			renderTemplate(w, r, "user_form.html", map[string]interface{}{"Error": "Invalid user response"})
 			return
 		}
 
-		renderTemplate(w, "user_form.html", map[string]interface{}{
+		renderTemplate(w, r, "user_form.html", map[string]interface{}{
 			"User":        user,
 			"FormAction":  "/users/" + id + "/edit",
 			"SubmitLabel": "Save changes",
@@ -1792,13 +1829,13 @@ func userUpdate(apiBase string) http.HandlerFunc {
 		editPayload := func(errMsg string) map[string]interface{} {
 			return map[string]interface{}{
 				"Error":       errMsg,
-				"User":       map[string]interface{}{"Username": username, "Role": role},
+				"User":       map[string]interface{}{"ID": id, "Username": username, "Role": role},
 				"FormAction":  "/users/" + id + "/edit",
 				"SubmitLabel": "Save changes",
 			}
 		}
 		if username == "" {
-			renderTemplate(w, "user_form.html", editPayload("Username is required"))
+			renderTemplate(w, r, "user_form.html", editPayload("Username is required"))
 			return
 		}
 
@@ -1811,21 +1848,28 @@ func userUpdate(apiBase string) http.HandlerFunc {
 		body := []byte(fmt.Sprintf(`{"username":%q,"role":%q}`, username, role))
 		data, status, err := apiPut(apiBase, "/users/"+id, tok, body)
 		if err != nil {
-			renderTemplate(w, "user_form.html", editPayload(err.Error()))
+			renderTemplate(w, r, "user_form.html", editPayload(err.Error()))
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status < http.StatusOK || status >= http.StatusMultipleChoices {
-			var errResp struct{ Error string }
+			var errResp struct {
+				Error  string            `json:"error"`
+				Fields map[string]string `json:"fields"`
+			}
 			_ = json.Unmarshal(data, &errResp)
 			msg := errResp.Error
 			if msg == "" {
 				msg = string(data)
 			}
-			renderTemplate(w, "user_form.html", editPayload("API: "+msg))
+			payload := editPayload("API: " + msg)
+			if len(errResp.Fields) > 0 {
+				payload["Fields"] = errResp.Fields
+			}
+			renderTemplate(w, r, "user_form.html", payload)
 			return
 		}
 
@@ -1844,15 +1888,15 @@ func userChangePasswordForm(apiBase string) http.HandlerFunc {
 
 		data, status, err := apiGet(apiBase, "/users/"+id, tok)
 		if err != nil {
-			renderTemplate(w, "user_change_password.html", map[string]interface{}{"Error": err.Error(), "User": map[string]interface{}{"ID": id, "Username": ""}})
+			renderTemplate(w, r, "user_change_password.html", map[string]interface{}{"Error": err.Error(), "User": map[string]interface{}{"ID": id, "Username": ""}})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "user_change_password.html", map[string]interface{}{"Error": "User not found or API error", "User": map[string]interface{}{"ID": id, "Username": ""}})
+			renderTemplate(w, r, "user_change_password.html", map[string]interface{}{"Error": "User not found or API error", "User": map[string]interface{}{"ID": id, "Username": ""}})
 			return
 		}
 
@@ -1861,11 +1905,11 @@ func userChangePasswordForm(apiBase string) http.HandlerFunc {
 			Username string `json:"username"`
 		}
 		if err := json.Unmarshal(data, &user); err != nil {
-			renderTemplate(w, "user_change_password.html", map[string]interface{}{"Error": "Invalid user response", "User": map[string]interface{}{"ID": id, "Username": ""}})
+			renderTemplate(w, r, "user_change_password.html", map[string]interface{}{"Error": "Invalid user response", "User": map[string]interface{}{"ID": id, "Username": ""}})
 			return
 		}
 
-		renderTemplate(w, "user_change_password.html", map[string]interface{}{
+		renderTemplate(w, r, "user_change_password.html", map[string]interface{}{
 			"User": user,
 		})
 	}
@@ -1899,11 +1943,11 @@ func userChangePassword(apiBase string) http.HandlerFunc {
 		}
 
 		if newPassword == "" {
-			renderTemplate(w, "user_change_password.html", payload("New password is required"))
+			renderTemplate(w, r, "user_change_password.html", payload("New password is required"))
 			return
 		}
 		if newPassword != confirmPassword {
-			renderTemplate(w, "user_change_password.html", payload("New password and confirmation do not match"))
+			renderTemplate(w, r, "user_change_password.html", payload("New password and confirmation do not match"))
 			return
 		}
 
@@ -1913,11 +1957,11 @@ func userChangePassword(apiBase string) http.HandlerFunc {
 		})
 		data, status, err := apiPut(apiBase, "/users/"+id+"/password", tok, body)
 		if err != nil {
-			renderTemplate(w, "user_change_password.html", payload(err.Error()))
+			renderTemplate(w, r, "user_change_password.html", payload(err.Error()))
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusNoContent {
@@ -1927,7 +1971,7 @@ func userChangePassword(apiBase string) http.HandlerFunc {
 			if msg == "" {
 				msg = string(data)
 			}
-			renderTemplate(w, "user_change_password.html", payload("API: "+msg))
+			renderTemplate(w, r, "user_change_password.html", payload("API: "+msg))
 			return
 		}
 
@@ -1946,15 +1990,15 @@ func userDeleteConfirm(apiBase string) http.HandlerFunc {
 
 		data, status, err := apiGet(apiBase, "/users/"+id, tok)
 		if err != nil {
-			renderTemplate(w, "user_delete_confirm.html", map[string]interface{}{"Error": err.Error(), "UserID": id})
+			renderTemplate(w, r, "user_delete_confirm.html", map[string]interface{}{"Error": err.Error(), "UserID": id})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, "user_delete_confirm.html", map[string]interface{}{"Error": "User not found or API error", "UserID": id})
+			renderTemplate(w, r, "user_delete_confirm.html", map[string]interface{}{"Error": "User not found or API error", "UserID": id})
 			return
 		}
 
@@ -1963,11 +2007,11 @@ func userDeleteConfirm(apiBase string) http.HandlerFunc {
 			Username string `json:"username"`
 		}
 		if err := json.Unmarshal(data, &user); err != nil {
-			renderTemplate(w, "user_delete_confirm.html", map[string]interface{}{"Error": "Invalid user response", "UserID": id})
+			renderTemplate(w, r, "user_delete_confirm.html", map[string]interface{}{"Error": "Invalid user response", "UserID": id})
 			return
 		}
 
-		renderTemplate(w, "user_delete_confirm.html", map[string]interface{}{
+		renderTemplate(w, r, "user_delete_confirm.html", map[string]interface{}{
 			"User": user,
 		})
 	}
@@ -1984,14 +2028,14 @@ func userDelete(apiBase string) http.HandlerFunc {
 
 		body, status, err := apiDelete(apiBase, "/users/"+id, tok)
 		if err != nil {
-			renderTemplate(w, "user_delete_confirm.html", map[string]interface{}{
+			renderTemplate(w, r, "user_delete_confirm.html", map[string]interface{}{
 				"Error":  err.Error(),
 				"UserID": id,
 			})
 			return
 		}
 		if status == http.StatusUnauthorized {
-			clearAuthAndRedirectToLogin(w, r)
+			clearAuthAndRedirectToLogin(w, r, "")
 			return
 		}
 		if status == http.StatusNoContent {
@@ -2003,19 +2047,33 @@ func userDelete(apiBase string) http.HandlerFunc {
 		if len(msg) > 200 {
 			msg = msg[:200] + "..."
 		}
-		renderTemplate(w, "user_delete_confirm.html", map[string]interface{}{
+		renderTemplate(w, r, "user_delete_confirm.html", map[string]interface{}{
 			"Error":  "Delete failed: " + msg,
 			"UserID": id,
 		})
 	}
 }
 
-func renderTemplate(w http.ResponseWriter, name string, data interface{}) {
+func renderTemplate(w http.ResponseWriter, r *http.Request, name string, data interface{}) {
 	funcs := template.FuncMap{"eq": func(a, b interface{}) bool { return a == b }}
 	content, err := templatesFS.ReadFile("templates/" + name)
 	if err != nil {
 		http.Error(w, "template not found", http.StatusInternalServerError)
 		return
+	}
+
+	// Merge current user from context into data for layout (Logged in as ...).
+	if r != nil {
+		if u := r.Context().Value(userContextKey); u != nil {
+			if m, ok := data.(map[string]interface{}); ok {
+				m2 := make(map[string]interface{})
+				for k, v := range m {
+					m2[k] = v
+				}
+				m2["User"] = u
+				data = m2
+			}
+		}
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

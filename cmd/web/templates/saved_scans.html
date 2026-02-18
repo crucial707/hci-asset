@@ -2,7 +2,6 @@
 {{define "content"}}
 <h1>Saved Scans</h1>
 <p>Name and save scan targets, then run them from here. The scan will appear on <a href="/scans">Active Scans</a>.</p>
-{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
 <p><a href="/saved-scans/new">+ Add saved scan</a></p>
 {{if .SavedScans}}
 <table>

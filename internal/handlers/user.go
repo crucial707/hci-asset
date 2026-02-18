@@ -105,6 +105,22 @@ func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Me returns the current authenticated user (id, username, role). Used by the Web UI for session display.
+func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		JSONError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	user, err := h.Repo.GetByID(r.Context(), userID)
+	if err != nil || user == nil {
+		JSONError(w, "user not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(user) // PasswordHash has json:"-" so not exposed
+}
+
 // ==========================
 // Get User
 // ==========================

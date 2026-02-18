@@ -1,15 +1,16 @@
 {{define "title"}}{{if .User}}Edit user{{else}}New user{{end}}{{end}}
 {{define "content"}}
 <h1>{{if .User}}Edit user{{else}}Add user{{end}}</h1>
-{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
 <form method="post" action="{{.FormAction}}">
   <label for="username">Username</label>
   <input type="text" id="username" name="username" required {{if .User}}value="{{.User.Username}}"{{end}}>
+  {{if .Fields.username}}<span class="field-error">{{.Fields.username}}</span>{{end}}
   <label for="role">Role</label>
   <select id="role" name="role">
     <option value="viewer" {{if or (not .User) (eq .User.Role "viewer") (eq .User.Role "")}}selected{{end}}>Viewer</option>
     <option value="admin" {{if and .User (eq .User.Role "admin")}}selected{{end}}>Admin</option>
   </select>
+  {{if .Fields.role}}<span class="field-error">{{.Fields.role}}</span>{{end}}
   <button type="submit">{{.SubmitLabel}}</button>
 </form>
 {{if .User}}<p><a href="/users/{{.User.ID}}/change-password">Change password</a></p>{{end}}

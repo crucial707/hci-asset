@@ -88,16 +88,16 @@ Priorities: High → API reliability, security, config & deploy; Medium → obse
 
 ### Observability
 
-- [ ] **Prometheus metrics** – Expose `request_duration_seconds`, `request_total` by method/path/status, `scan_jobs_*`; `/metrics` endpoint (optional auth).
+- [x] **Prometheus metrics** – Expose `request_duration_seconds`, `request_total` by method/path/status, `scan_jobs_*`; `/metrics` endpoint (optional auth).
 - [ ] **Tracing (optional)** – Distributed tracing (e.g. OpenTelemetry) for scan lifecycle and API calls across components.
 
 ### Web UI: UX & polish
 
 - [ ] **Layout and branding** – Clear app identity (logo, app name, nav hierarchy); improve section headings and spacing.
-- [ ] **Loading and errors** – Loading states for list/detail and after submit; global error banner or toast; per-form validation messages.
+- [x] **Loading and errors** – Loading states for list/detail and after submit; global error banner or toast; per-form validation messages.
 - [ ] **Accessibility** – Focus management after login; semantic HTML and aria-*; color contrast and visible focus rings.
 - [ ] **Responsive** – Tables and forms usable on small screens (scroll, stacked layout, or card layout).
-- [ ] **Session display** – Show “Logged in as &lt;username&gt;” and role in nav; clear “Session expired” on 401 with next preserved.
+- [x] **Session display** – Show “Logged in as &lt;username&gt;” and role in nav; clear “Session expired” on 401 with next preserved.
 
 ### Deployment & config
 
@@ -115,4 +115,4 @@ Priorities: High → API reliability, security, config & deploy; Medium → obse
 ### Documentation
 
 - [x] **Production checklist in README** – TLS, non-default JWT, DB backups, CORS, logging, where to find metrics/health.
-- [ ] **Runbook** – One-page: how to check health, read logs, restart services; what to do on “DB unreachable” or “scan stuck”.
+- [x] **Runbook** – One-page: how to check health, read logs, restart services; what to do on “DB unreachable” or “scan stuck”.

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/crucial707/hci-asset/internal/metrics"
 	"github.com/crucial707/hci-asset/internal/models"
 	"github.com/crucial707/hci-asset/internal/repo"
 	"github.com/go-chi/chi/v5"
@@ -74,6 +75,7 @@ func (h *ScanHandler) StartScanTarget(ctx context.Context, target string) string
 		job := &ScanJob{Target: target, Status: "running", StartedAt: time.Now(), cancel: make(chan struct{})}
 		h.scanJobs[jobID] = job
 		h.scanJobsMu.Unlock()
+		metrics.IncScanJobsRunning()
 		go h.runScan(jobID, target, job.cancel)
 		return jobID
 	}
@@ -91,6 +93,7 @@ func (h *ScanHandler) StartScanTarget(ctx context.Context, target string) string
 	h.scanJobs[jobID] = job
 	h.scanJobsMu.Unlock()
 
+	metrics.IncScanJobsRunning()
 	go h.runScan(jobID, target, job.cancel)
 	return jobID
 }
@@ -218,6 +221,11 @@ func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 	h.scanJobsMu.Lock()
 	job := h.scanJobs[jobID]
 	h.scanJobsMu.Unlock()
+
+	defer func() {
+		metrics.DecScanJobsRunning()
+		metrics.IncScanJobsTotal(job.Status)
+	}()
 
 	persist := func() {
 		id, err := strconv.Atoi(jobID)
