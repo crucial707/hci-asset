@@ -22,7 +22,7 @@
   <p style="margin-bottom: 0.5rem;"><button type="submit">Delete selected</button></p>
   <div class="table-wrap">
   <table>
-  <thead><tr><th><abbr title="Select for batch delete">Select</abbr></th><th>ID</th><th>Name</th><th>Tags</th><th>IP / Network</th><th>Description</th><th>Last seen</th><th></th></tr></thead>
+  <thead><tr><th><label><input type="checkbox" id="select-all-assets" aria-label="Select all assets on this page"> Select all</label></th><th>ID</th><th>Name</th><th>Tags</th><th>IP / Network</th><th>Description</th><th>Last seen</th><th></th></tr></thead>
   <tbody>
   {{range .Assets}}<tr>
     <td><input type="checkbox" name="ids" value="{{.ID}}" aria-label="Select asset {{.Name}} for delete"></td>
@@ -37,10 +37,19 @@
   </tbody>
   </table>
   </div>
+  <script>
+    (function() {
+      var master = document.getElementById('select-all-assets');
+      var boxes = document.querySelectorAll('input[name="ids"]');
+      if (!master || !boxes.length) return;
+      master.addEventListener('change', function() {
+        boxes.forEach(function(cb) { cb.checked = master.checked; });
+      });
+    })();
+  </script>
 </form>
 {{else}}
 <p>No assets.</p>
 {{end}}
 </section>
-{{end}}
 {{end}}

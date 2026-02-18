@@ -405,8 +405,22 @@ func assetsList(apiBase string) http.HandlerFunc {
 		}
 
 		data, status, err := apiGet(apiBase, path, tok)
+		emptyAssets := []struct {
+			ID          int      `json:"id"`
+			Name        string   `json:"name"`
+			Description string   `json:"description"`
+			Tags        []string `json:"tags"`
+			NetworkName string   `json:"network_name"`
+			LastSeen    *string  `json:"last_seen"`
+		}{}
+		errData := map[string]interface{}{
+			"SearchQuery": search, "TagFilter": tagFilter, "Page": page,
+			"PrevPage": 0, "NextPage": 0, "Assets": emptyAssets,
+			"SearchEncoded": url.QueryEscape(search), "TagEncoded": url.QueryEscape(tagFilter),
+		}
 		if err != nil {
-			renderTemplate(w, r, "assets.html", map[string]interface{}{"Error": err.Error(), "SearchQuery": search, "TagFilter": tagFilter, "Page": page})
+			errData["Error"] = err.Error()
+			renderTemplate(w, r, "assets.html", errData)
 			return
 		}
 		if status == http.StatusUnauthorized {
@@ -414,7 +428,8 @@ func assetsList(apiBase string) http.HandlerFunc {
 			return
 		}
 		if status != http.StatusOK {
-			renderTemplate(w, r, "assets.html", map[string]interface{}{"Error": "API error: " + string(data), "SearchQuery": search, "TagFilter": tagFilter, "Page": page})
+			errData["Error"] = "API error: " + string(data)
+			renderTemplate(w, r, "assets.html", errData)
 			return
 		}
 
@@ -432,7 +447,8 @@ func assetsList(apiBase string) http.HandlerFunc {
 			Offset int `json:"offset"`
 		}
 		if err := json.Unmarshal(data, &listResp); err != nil {
-			renderTemplate(w, r, "assets.html", map[string]interface{}{"Error": "Invalid assets response", "SearchQuery": search, "TagFilter": tagFilter, "Page": page})
+			errData["Error"] = "Invalid assets response"
+			renderTemplate(w, r, "assets.html", errData)
 			return
 		}
 		assets := listResp.Items
@@ -2171,18 +2187,26 @@ func renderTemplate(w http.ResponseWriter, r *http.Request, name string, data in
 		}
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
 	if name == "login.html" {
 		t := template.Must(template.New("").Funcs(funcs).Parse(string(content)))
-		_ = t.ExecuteTemplate(w, "login", data)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := t.ExecuteTemplate(w, "login", data); err != nil {
+			log.Printf("template execute: %v", err)
+			http.Error(w, "template error", http.StatusInternalServerError)
+		}
 		return
 	}
 
 	layout, _ := templatesFS.ReadFile("templates/layout.html")
 	t := template.Must(template.New("").Funcs(funcs).Parse(string(layout)))
 	t = template.Must(t.New("").Parse(string(content)))
-	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
+	var buf strings.Builder
+	if err := t.ExecuteTemplate(&buf, "layout", data); err != nil {
 		log.Printf("template execute: %v", err)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		http.Error(w, "template error", http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = io.WriteString(w, buf.String())
 }
