@@ -3,6 +3,7 @@
 <h1>Users</h1>
 <p><a href="/users/new">+ Add user</a></p>
 {{if .Users}}
+<div class="table-wrap">
 <table>
   <thead><tr><th>ID</th><th>Username</th><th>Role</th><th></th></tr></thead>
   <tbody>
@@ -14,6 +15,7 @@
   </tr>{{end}}
   </tbody>
 </table>
+</div>
 {{else}}
 <p>No users.</p>
 {{end}}

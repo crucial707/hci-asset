@@ -12,6 +12,7 @@
 {{end}}
 {{if .Job.Assets}}
 <h2>Discovered assets ({{len .Job.Assets}})</h2>
+<div class="table-wrap">
 <table>
   <thead><tr><th>ID</th><th>Name</th><th>IP / Network</th><th>Description</th><th></th></tr></thead>
   <tbody>
@@ -24,6 +25,7 @@
   </tr>{{end}}
   </tbody>
 </table>
+</div>
 {{else}}
 {{if eq .Job.Status "complete"}}<p>No hosts discovered.</p>{{end}}
 {{if eq .Job.Status "running"}}<p>Scan in progress… Refresh to see discovered assets.</p>{{end}}

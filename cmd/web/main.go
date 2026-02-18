@@ -233,6 +233,10 @@ func loginSubmit(apiBase string) http.HandlerFunc {
 		if next == "" {
 			next = "/dashboard"
 		}
+		// Append #main so layout can focus main content for accessibility after login
+		if !strings.Contains(next, "#") {
+			next = next + "#main"
+		}
 
 		http.SetCookie(w, &http.Cookie{
 			Name:     cookieName,

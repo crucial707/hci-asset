@@ -93,10 +93,10 @@ Priorities: High → API reliability, security, config & deploy; Medium → obse
 
 ### Web UI: UX & polish
 
-- [ ] **Layout and branding** – Clear app identity (logo, app name, nav hierarchy); improve section headings and spacing.
+- [x] **Layout and branding** – Clear app identity (logo, app name, nav hierarchy); improve section headings and spacing.
 - [x] **Loading and errors** – Loading states for list/detail and after submit; global error banner or toast; per-form validation messages.
-- [ ] **Accessibility** – Focus management after login; semantic HTML and aria-*; color contrast and visible focus rings.
-- [ ] **Responsive** – Tables and forms usable on small screens (scroll, stacked layout, or card layout).
+- [x] **Accessibility** – Focus management after login; semantic HTML and aria-*; color contrast and visible focus rings.
+- [x] **Responsive** – Tables and forms usable on small screens (scroll, stacked layout, or card layout).
 - [x] **Session display** – Show “Logged in as &lt;username&gt;” and role in nav; clear “Session expired” on 401 with next preserved.
 
 ### Deployment & config

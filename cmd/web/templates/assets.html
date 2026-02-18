@@ -17,6 +17,7 @@
   {{if .NextPage}}<a href="/assets?page={{.NextPage}}{{if .SearchQuery}}&search={{.SearchEncoded}}{{end}}{{if .TagFilter}}&tag={{.TagEncoded}}{{end}}">Next →</a>{{end}}
 </p>
 {{end}}
+<div class="table-wrap">
 <table>
   <thead><tr><th>ID</th><th>Name</th><th>Tags</th><th>IP / Network</th><th>Description</th><th>Last seen</th><th></th></tr></thead>
   <tbody>
@@ -31,6 +32,7 @@
   </tr>{{end}}
   </tbody>
 </table>
+</div>
 {{if not .Assets}}<p>No assets.</p>{{end}}
 </section>
 {{end}}

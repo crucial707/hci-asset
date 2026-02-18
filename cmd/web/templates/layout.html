@@ -4,28 +4,44 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Humboldt Cyber Intelligence – Asset {{block "title" .}}Dashboard{{end}}</title>
+  <title>{{block "title" .}}Dashboard{{end}} – Humboldt Cyber Intelligence</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.min.css">
   <style>
     :root {
       --hci-dark: #1a3a4a;
       --hci-accent: #2d5a6b;
       --hci-teal: #7eb8c9;
+      --focus-ring: 2px solid var(--hci-teal);
+      --focus-offset: 2px;
     }
     body { max-width: 960px; margin: 0 auto; padding: 1rem; }
+    .skip-link {
+      position: absolute;
+      top: -2.5rem;
+      left: 0.5rem;
+      padding: 0.5rem 0.75rem;
+      background: var(--hci-dark);
+      color: #fff;
+      text-decoration: none;
+      border-radius: 4px;
+      z-index: 100;
+      transition: top 0.15s ease;
+    }
+    .skip-link:focus { top: 0.5rem; outline: var(--focus-ring); outline-offset: var(--focus-offset); }
     .brand-header {
       display: flex;
       align-items: center;
       gap: 1rem;
-      margin-bottom: 1.5rem;
+      margin-bottom: 1rem;
       padding-bottom: 1rem;
-      border-bottom: 1px solid var(--hci-teal, #7eb8c9);
+      border-bottom: 2px solid var(--hci-teal);
     }
     .brand-header a { text-decoration: none; color: inherit; display: flex; align-items: center; gap: 0.75rem; }
+    .brand-header a:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); border-radius: 4px; }
     .brand-header img { height: 48px; width: auto; display: block; }
     .brand-text { line-height: 1.2; }
-    .brand-name { font-size: 1.25rem; font-weight: 700; color: var(--hci-dark, #1a3a4a); }
-    .brand-product { font-size: 0.85rem; color: var(--hci-accent, #2d5a6b); }
+    .brand-name { font-size: 1.25rem; font-weight: 700; color: var(--hci-dark); }
+    .brand-product { font-size: 0.85rem; color: var(--hci-accent); }
     nav {
       display: flex;
       flex-wrap: wrap;
@@ -34,6 +50,7 @@
       margin-bottom: 1.5rem;
     }
     nav a { margin-right: 0; }
+    nav a:focus-visible, nav a:hover { outline: var(--focus-ring); outline-offset: var(--focus-offset); border-radius: 2px; }
     .nav-spacer { margin-left: auto; }
     .error { color: #c00; }
     .global-error {
@@ -45,9 +62,19 @@
       color: #800;
     }
     .field-error { font-size: 0.9rem; color: #c00; display: block; margin-top: 0.25rem; }
-    table { width: 100%; }
-    th, td { text-align: left; padding: 0.5rem; }
     main { min-height: 40vh; }
+    main:focus { outline: none; }
+    main section { margin-top: 1.5rem; }
+    main section:first-child { margin-top: 0; }
+    main h1 { margin-top: 0; margin-bottom: 1rem; font-size: 1.5rem; }
+    main h2 { margin-top: 1.25rem; margin-bottom: 0.5rem; font-size: 1.15rem; }
+    .table-wrap { overflow-x: auto; margin: 1rem 0; -webkit-overflow-scrolling: touch; }
+    .table-wrap table { width: 100%; min-width: 480px; }
+    th, td { text-align: left; padding: 0.5rem 0.75rem; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+      outline: var(--focus-ring); outline-offset: var(--focus-offset);
+    }
+    a:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); border-radius: 2px; }
     .page-footer {
       margin-top: 2.5rem;
       padding-top: 1rem;
@@ -55,19 +82,32 @@
       font-size: 0.85rem;
       color: #666;
     }
+    @media (max-width: 640px) {
+      body { padding: 0.75rem; }
+      .brand-header { gap: 0.75rem; }
+      .brand-name { font-size: 1.1rem; }
+      nav { gap: 0.5rem; margin-bottom: 1rem; }
+      .nav-spacer { margin-left: 0; width: 100%; order: -1; }
+      .nav-user { font-size: 0.9rem; }
+      main h1 { font-size: 1.25rem; }
+      .table-wrap { margin-left: -0.75rem; margin-right: -0.75rem; padding: 0 0.75rem; }
+      th, td { padding: 0.4rem 0.5rem; font-size: 0.9rem; }
+    }
   </style>
 </head>
 <body>
-  <header class="brand-header">
-    <a href="/dashboard">
-      <img src="/static/logo.svg" alt="Humboldt Cyber Intelligence">
+  <a href="#main" class="skip-link">Skip to main content</a>
+  <header class="brand-header" role="banner">
+    <a href="/dashboard" aria-label="Humboldt Cyber Intelligence – go to dashboard">
+      <img src="/static/logo.svg" alt="" width="48" height="48">
       <span class="brand-text">
         <span class="brand-name">Humboldt Cyber Intelligence</span>
         <span class="brand-product">Asset &amp; Security</span>
       </span>
     </a>
   </header>
-  <nav>
+  <nav aria-label="Main navigation">
+    <span class="nav-spacer"></span>
     <a href="/dashboard">Dashboard</a>
     <a href="/assets">Assets</a>
     <a href="/users">Users</a>
@@ -75,27 +115,32 @@
     <a href="/saved-scans">Saved Scans</a>
     <a href="/schedules">Schedules</a>
     <a href="/audit">Audit log</a>
-    <span class="nav-spacer"></span>
-    {{if .User}}<span class="nav-user">Logged in as <strong>{{.User.Username}}</strong> ({{.User.Role}})</span>{{end}}
+    {{if .User}}<span class="nav-user" aria-label="Logged in as {{.User.Username}}, {{.User.Role}}">Logged in as <strong>{{.User.Username}}</strong> ({{.User.Role}})</span>{{end}}
     <a href="/logout">Log out</a>
   </nav>
-  <main>
+  <main id="main" tabindex="-1" role="main">
   {{if .Error}}<div class="global-error" role="alert">{{.Error}}</div>{{end}}
   {{template "content" .}}
   </main>
   <script>
-  document.querySelectorAll('form').forEach(function(f) {
-    f.addEventListener('submit', function() {
-      var btn = f.querySelector('button[type="submit"]');
-      if (btn && !btn.disabled) {
-        btn.disabled = true;
-        btn.dataset.originalText = btn.textContent;
-        btn.textContent = btn.dataset.loadingText || 'Saving...';
-      }
+  (function() {
+    if (window.location.hash === '#main') {
+      var main = document.getElementById('main');
+      if (main) main.focus();
+    }
+    document.querySelectorAll('form').forEach(function(f) {
+      f.addEventListener('submit', function() {
+        var btn = f.querySelector('button[type="submit"]');
+        if (btn && !btn.disabled) {
+          btn.disabled = true;
+          btn.dataset.originalText = btn.textContent;
+          btn.textContent = btn.dataset.loadingText || 'Saving...';
+        }
+      });
     });
-  });
+  })();
   </script>
-  <footer class="page-footer">
+  <footer class="page-footer" role="contentinfo">
     Humboldt Cyber Intelligence · Asset inventory &amp; security
   </footer>
 </body>

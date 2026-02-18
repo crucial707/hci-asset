@@ -7,31 +7,32 @@
   <title>Log in – Humboldt Cyber Intelligence</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.min.css">
   <style>
-    :root { --hci-dark: #1a3a4a; --hci-accent: #2d5a6b; --hci-teal: #7eb8c9; }
+    :root { --hci-dark: #1a3a4a; --hci-accent: #2d5a6b; --hci-teal: #7eb8c9; --focus-ring: 2px solid var(--hci-teal); --focus-offset: 2px; }
     body { max-width: 400px; margin: 2rem auto; text-align: center; }
     .login-brand { margin-bottom: 1.5rem; }
     .login-brand a { text-decoration: none; color: inherit; display: inline-flex; flex-direction: column; align-items: center; gap: 0.5rem; }
+    .login-brand a:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); border-radius: 4px; }
     .login-brand img { height: 64px; width: auto; }
     .login-brand .name { font-size: 1.1rem; font-weight: 700; color: var(--hci-dark); }
     .login-brand .product { font-size: 0.9rem; color: var(--hci-accent); }
     .login-form { text-align: left; margin-top: 1.5rem; }
     .error { color: #c00; }
+    input:focus-visible, button:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
   </style>
 </head>
 <body>
   <div class="login-brand">
-    <a href="/login">
-      <img src="/static/logo.svg" alt="Humboldt Cyber Intelligence">
+    <a href="/login" aria-label="Humboldt Cyber Intelligence – Asset &amp; Security">
+      <img src="/static/logo.svg" alt="" width="64" height="64">
       <span class="name">Humboldt Cyber Intelligence</span>
       <span class="product">Asset &amp; Security</span>
     </a>
   </div>
   <h1>Log in</h1>
-  {{if .Message}}<p class="error">{{.Message}}</p>{{end}}
-  {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
-  <form class="login-form" method="post" action="/login">
+  {{if or .Message .Error}}<p id="login-error" class="error" role="alert">{{if .Message}}{{.Message}}{{else}}{{.Error}}{{end}}</p>{{end}}
+  <form class="login-form" method="post" action="/login" {{if or .Message .Error}}aria-describedby="login-error"{{end}}>
     <label for="username">Username</label>
-    <input id="username" name="username" type="text" required autofocus>
+    <input id="username" name="username" type="text" required autofocus aria-required="true">
     <label for="password">Password (optional)</label>
     <input id="password" name="password" type="password" autocomplete="current-password">
     <button type="submit">Log in</button>
