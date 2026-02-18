@@ -286,7 +286,18 @@ From the repo root:
   go test ./internal/handlers/...
   ```
 
-**CI**: A GitHub Actions workflow (`.github/workflows/ci.yml`) runs on push and pull requests to `main`/`master`: it checks out the repo, sets up Go from `go.mod`, runs `go build ./...` and `go test -v ./...`.
+**CI**: A GitHub Actions workflow (`.github/workflows/ci.yml`) runs on push and pull requests to `main`/`master`: it checks out the repo, sets up Go from `go.mod`, verifies `go mod tidy` (fails if `go.mod`/`go.sum` would change), runs `go build ./...`, `go test -v ./...`, and **govulncheck** (fails if known vulnerabilities are reported in dependencies). See [Dependency checks](#dependency-checks) for how to fix tidy or vulnerability failures.
+
+### Dependency checks
+
+- **go mod tidy**: CI ensures `go.mod` and `go.sum` are up to date. If the "Verify go mod tidy" step fails, run `go mod tidy` locally and commit the changes to `go.mod` and `go.sum`.
+- **govulncheck**: CI runs [govulncheck](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck) to report known vulnerabilities in dependencies. To run locally:
+  ```bash
+  go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+  ```
+  If vulnerabilities are reported:
+  1. Prefer updating the affected dependency to a patched version: `go get module@version` (or upgrade the direct dependency that pulls it in), then run `go mod tidy` and re-run govulncheck.
+  2. If no fix is available yet, document the finding and consider mitigations (e.g. network policies, not exposing the service) until an upstream fix is released. You can temporarily allow the CI to pass by not blocking on govulncheck for that period, but updating dependencies should be the default.
 
 ### Local dev (quick start)
 
