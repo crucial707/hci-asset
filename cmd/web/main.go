@@ -70,6 +70,7 @@ func main() {
 		r.Post("/assets/{id}/edit", assetUpdate(apiBase))
 		r.Get("/assets/{id}/delete", assetDeleteConfirm(apiBase))
 		r.Post("/assets/{id}/delete", assetDelete(apiBase))
+		r.Post("/assets/batch-delete", assetsBatchDelete(apiBase))
 		r.Get("/users", usersList(apiBase))
 		r.Get("/users/new", userCreateForm(apiBase))
 		r.Post("/users", userCreate(apiBase))
@@ -447,6 +448,7 @@ func assetsList(apiBase string) http.HandlerFunc {
 		}
 		searchEncoded := url.QueryEscape(search)
 		tagEncoded := url.QueryEscape(tagFilter)
+		errorParam := r.URL.Query().Get("error")
 
 		renderTemplate(w, r, "assets.html", map[string]interface{}{
 			"Assets":        assets,
@@ -457,6 +459,7 @@ func assetsList(apiBase string) http.HandlerFunc {
 			"Page":          page,
 			"PrevPage":      prevPage,
 			"NextPage":      nextPage,
+			"Error":         errorParam,
 		})
 	}
 }
@@ -811,6 +814,62 @@ func assetDelete(apiBase string) http.HandlerFunc {
 			"Error":   "Delete failed: " + msg,
 			"AssetID": id,
 		})
+	}
+}
+
+func assetsBatchDelete(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Redirect(w, r, "/assets", http.StatusFound)
+			return
+		}
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		if err := r.ParseForm(); err != nil {
+			http.Redirect(w, r, "/assets?error=invalid+form", http.StatusFound)
+			return
+		}
+		idsStr := r.PostForm["ids"]
+		if len(idsStr) == 0 {
+			http.Redirect(w, r, "/assets", http.StatusFound)
+			return
+		}
+		var ids []int
+		for _, s := range idsStr {
+			id, err := strconv.Atoi(s)
+			if err != nil {
+				continue
+			}
+			ids = append(ids, id)
+		}
+		if len(ids) == 0 {
+			http.Redirect(w, r, "/assets", http.StatusFound)
+			return
+		}
+
+		body, _ := json.Marshal(map[string]interface{}{"ids": ids})
+		data, status, err := apiPost(apiBase, "/assets/batch-delete", tok, body)
+		if err != nil {
+			http.Redirect(w, r, "/assets?error="+url.QueryEscape(err.Error()), http.StatusFound)
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r, "")
+			return
+		}
+		if status != http.StatusOK {
+			msg := string(data)
+			if len(msg) > 150 {
+				msg = msg[:150] + "..."
+			}
+			http.Redirect(w, r, "/assets?error="+url.QueryEscape(msg), http.StatusFound)
+			return
+		}
+		http.Redirect(w, r, "/assets", http.StatusFound)
 	}
 }
 

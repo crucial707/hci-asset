@@ -192,6 +192,7 @@ func newRouter(db *sql.DB, cfg config.Config) (*chi.Mux, *handlers.ScanHandler, 
 		r.With(jwtMiddleware, adminOnly).Put("/assets/{id}", assetHandler.UpdateAsset)
 		r.With(jwtMiddleware, adminOnly).Post("/assets/{id}/heartbeat", assetHandler.Heartbeat)
 		r.With(jwtMiddleware, adminOnly).Delete("/assets/{id}", assetHandler.DeleteAsset)
+		r.With(jwtMiddleware, adminOnly).Post("/assets/batch-delete", assetHandler.BatchDeleteAssets)
 		r.With(jwtMiddleware, adminOnly).Post("/users", userHandler.CreateUser)
 		r.With(jwtMiddleware).Put("/users/{id}/password", userHandler.ChangePassword)
 		r.With(jwtMiddleware, adminOnly).Put("/users/{id}", userHandler.UpdateUser)

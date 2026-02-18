@@ -254,3 +254,38 @@ func (h *AssetHandler) DeleteAsset(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// ==========================
+// Batch Delete Assets
+// ==========================
+func (h *AssetHandler) BatchDeleteAssets(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		IDs []int `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		JSONError(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if len(input.IDs) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]int{"deleted": 0})
+		return
+	}
+
+	ctx := r.Context()
+	deleted := 0
+	for _, id := range input.IDs {
+		if err := h.Repo.Delete(ctx, id); err != nil {
+			continue // skip not-found or other errors, keep going
+		}
+		deleted++
+		if h.AuditRepo != nil {
+			if userID, ok := middleware.GetUserID(ctx); ok {
+				_ = h.AuditRepo.Log(ctx, userID, "delete", "asset", id, "")
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{"deleted": deleted})
+}

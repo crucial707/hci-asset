@@ -2,7 +2,7 @@
 {{define "content"}}
 <section aria-label="Assets">
 <h1>Assets</h1>
-{{if .Error}}<p class="error">{{.Error}}</p>{{else}}
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
 <p><a href="/assets/new">+ New asset</a></p>
 <form method="get" action="/assets" style="margin-bottom: 1rem;">
   <input type="text" name="search" value="{{.SearchQuery}}" placeholder="Search by name or description">
@@ -17,11 +17,15 @@
   {{if .NextPage}}<a href="/assets?page={{.NextPage}}{{if .SearchQuery}}&search={{.SearchEncoded}}{{end}}{{if .TagFilter}}&tag={{.TagEncoded}}{{end}}">Next →</a>{{end}}
 </p>
 {{end}}
-<div class="table-wrap">
-<table>
-  <thead><tr><th>ID</th><th>Name</th><th>Tags</th><th>IP / Network</th><th>Description</th><th>Last seen</th><th></th></tr></thead>
+{{if .Assets}}
+<form method="post" action="/assets/batch-delete">
+  <p style="margin-bottom: 0.5rem;"><button type="submit">Delete selected</button></p>
+  <div class="table-wrap">
+  <table>
+  <thead><tr><th><abbr title="Select for batch delete">Select</abbr></th><th>ID</th><th>Name</th><th>Tags</th><th>IP / Network</th><th>Description</th><th>Last seen</th><th></th></tr></thead>
   <tbody>
   {{range .Assets}}<tr>
+    <td><input type="checkbox" name="ids" value="{{.ID}}" aria-label="Select asset {{.Name}} for delete"></td>
     <td>{{.ID}}</td>
     <td>{{.Name}}</td>
     <td>{{range $i, $t := .Tags}}{{if $i}}, {{end}}{{$t}}{{end}}</td>
@@ -31,9 +35,12 @@
     <td><a href="/assets/{{.ID}}">View</a></td>
   </tr>{{end}}
   </tbody>
-</table>
-</div>
-{{if not .Assets}}<p>No assets.</p>{{end}}
+  </table>
+  </div>
+</form>
+{{else}}
+<p>No assets.</p>
+{{end}}
 </section>
 {{end}}
 {{end}}
