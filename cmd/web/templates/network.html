@@ -1,0 +1,70 @@
+{{define "title"}}Network{{end}}
+{{define "content"}}
+<section aria-label="Network map">
+<h1>Network map</h1>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+<p>Assets grouped by subnet (when IP is known) or by first tag. Nodes with no IP and no tag appear in &quot;Untagged&quot;. Drag to pan, scroll to zoom. Click a node to open the asset.</p>
+<div id="network-legend" class="network-legend" style="margin-bottom:0.5rem;font-size:0.9rem;"></div>
+<div id="network-canvas" class="network-viz-container"></div>
+</section>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<script>
+(function() {
+  var graphData = {{.GraphJSON}};
+  var nodes = new vis.DataSet(graphData.nodes.map(function(n) {
+    return { id: n.id, label: n.label, group: n.group, title: n.title || n.label, assetId: n.asset_id };
+  }));
+  var edges = new vis.DataSet([]);
+  var container = document.getElementById('network-canvas');
+  if (!container) return;
+  var data = { nodes: nodes, edges: edges };
+  var options = {
+    nodes: {
+      font: { size: 14 },
+      shape: 'dot',
+      size: 16,
+      borderWidth: 2,
+    },
+    groups: {
+      Untagged: { color: { background: '#9e9e9e', border: '#616161' } },
+      dmz: { color: { background: '#e57373', border: '#c62828' } },
+      internal: { color: { background: '#64b5f6', border: '#1565c0' } },
+      iot: { color: { background: '#81c784', border: '#2e7d32' } },
+      production: { color: { background: '#ffb74d', border: '#e65100' } },
+    },
+    physics: {
+      enabled: true,
+      forceAtlas2Based: {
+        gravitationalConstant: -30,
+        centralGravity: 0.01,
+        springLength: 150,
+        springConstant: 0.08,
+      },
+      solver: 'forceAtlas2Based',
+      stabilization: { iterations: 150 },
+    },
+    interaction: { hover: true, tooltipDelay: 100 },
+  };
+  var network = new vis.Network(container, data, options);
+  network.on('click', function(params) {
+    if (params.nodes.length && params.nodes[0]) {
+      var nodeId = params.nodes[0];
+      var node = nodes.get(nodeId);
+      if (node && node.assetId) {
+        window.location.href = '/assets/' + node.assetId;
+      }
+    }
+  });
+  var legendEl = document.getElementById('network-legend');
+  if (legendEl && graphData.groups && graphData.groups.length) {
+    var colors = { Untagged: '#9e9e9e', dmz: '#e57373', internal: '#64b5f6', iot: '#81c784', production: '#ffb74d' };
+    var html = '';
+    graphData.groups.forEach(function(g) {
+      var c = colors[g.id] || '#7eb8c9';
+      html += '<span style="display:inline-block;width:12px;height:12px;background:' + c + ';border:1px solid #333;margin-right:4px;vertical-align:middle;"></span> ' + (g.label || g.id) + ' &nbsp; ';
+    });
+    legendEl.innerHTML = html;
+  }
+})();
+</script>
+{{end}}

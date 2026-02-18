@@ -100,6 +100,7 @@ func main() {
 		r.Get("/schedules/{id}/delete", scheduleDeleteConfirm(apiBase))
 		r.Post("/schedules/{id}/delete", scheduleDelete(apiBase))
 		r.Get("/audit", auditList(apiBase))
+		r.Get("/network", networkPage(apiBase))
 	})
 
 	log.Printf("Web UI running on http://localhost:%s (API: %s)", port, apiBase)
@@ -1644,6 +1645,37 @@ func auditList(apiBase string) http.HandlerFunc {
 			"NextOffset": nextOffset,
 			"HasPrev":    offset > 0,
 			"HasNext":    hasNext,
+		})
+	}
+}
+
+// ====== Network map (Web UI) ======
+
+func networkPage(apiBase string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token, _ := r.Cookie(cookieName)
+		tok := ""
+		if token != nil {
+			tok = token.Value
+		}
+
+		data, status, err := apiGet(apiBase, "/network/graph", tok)
+		if err != nil {
+			renderTemplate(w, r, "network.html", map[string]interface{}{"Error": err.Error(), "BodyClass": "network-viz", "GraphJSON": template.JS("{}")})
+			return
+		}
+		if status == http.StatusUnauthorized {
+			clearAuthAndRedirectToLogin(w, r, "")
+			return
+		}
+		if status != http.StatusOK {
+			renderTemplate(w, r, "network.html", map[string]interface{}{"Error": "API error: " + string(data), "BodyClass": "network-viz", "GraphJSON": template.JS("{}")})
+			return
+		}
+
+		renderTemplate(w, r, "network.html", map[string]interface{}{
+			"BodyClass": "network-viz",
+			"GraphJSON": template.JS(data),
 		})
 	}
 }

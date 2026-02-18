@@ -1,0 +1,1 @@
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS network_name VARCHAR(255);

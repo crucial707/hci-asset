@@ -258,6 +258,7 @@ A web dashboard runs as a separate binary and talks to the API.
   - **Assets** – List with search (by name or description), “+ New asset”, and per-row View. From asset detail: Edit, Delete, **Record heartbeat** (updates last seen). Create and edit use a simple name + description form.
   - **Users** – List with “+ Add user”, and per-row Edit and Delete. Add and edit use a username-only form.
   - **Scans** – Start a network scan (target e.g. `192.168.1.0/24`). Scan detail shows target, status, **elapsed/duration timer**, cancel button, and discovered assets with links to asset pages. Page auto-refreshes every few seconds while a scan is running.
+  - **Network** – Network map: assets as nodes grouped by subnet (when IP is set) or by first tag. Drag to pan, scroll to zoom; click a node to open the asset. Segmentation is visible by color. Discovered scan IPs are stored in `network_name` and used for subnet grouping (/24 for IPv4, /64 for IPv6).
 
 - **Config**: `HCI_WEB_PORT` (default 3000), `HCI_ASSET_API_URL` (default http://localhost:8080). The UI stores a JWT in a cookie after login.
 

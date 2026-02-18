@@ -290,6 +290,9 @@ func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 			continue
 		}
 		asset.NetworkName = ip
+		if err := h.Repo.UpdateNetworkName(ctx, asset.ID, ip); err != nil {
+			// Non-fatal: asset is still discovered, IP just not persisted
+		}
 		discovered = append(discovered, *asset)
 	}
 

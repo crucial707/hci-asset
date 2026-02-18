@@ -110,7 +110,7 @@ Priorities: High → API reliability, security, config & deploy; Medium → obse
 
 - [ ] **Integration tests** – Suite against real Postgres (testcontainers or CI DB): start API, auth + CRUD + scan flows, assert responses and DB state.
 - [ ] **E2E (optional)** – Critical journeys (e.g. login → list assets → heartbeat) via browser or API E2E to guard regressions.
-- [ ] **Dependency checks** – Run `go mod tidy` and vulnerability check (e.g. govulncheck, Dependabot) in CI; document how to address findings.
+- [x] **Dependency checks** – Run `go mod tidy` and vulnerability check (e.g. govulncheck, Dependabot) in CI; document how to address findings.
 
 ### Documentation
 

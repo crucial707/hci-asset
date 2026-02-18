@@ -55,9 +55,9 @@ func (r *AssetRepo) FindByName(ctx context.Context, name string) (*models.Asset,
 	var a models.Asset
 	var lastSeen sql.NullTime
 	err := r.db.QueryRowContext(ctx,
-		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen FROM assets WHERE name=$1",
+		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen, COALESCE(network_name, '') FROM assets WHERE name=$1",
 		name,
-	).Scan(&a.ID, &a.Name, &a.Description, pq.Array(&a.Tags), &lastSeen)
+	).Scan(&a.ID, &a.Name, &a.Description, pq.Array(&a.Tags), &lastSeen, &a.NetworkName)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrAssetNotFound
@@ -123,7 +123,7 @@ func (r *AssetRepo) CountSearch(ctx context.Context, query string) (int, error) 
 // ==========================
 func (r *AssetRepo) List(ctx context.Context, limit, offset int) ([]models.Asset, error) {
 	rows, err := r.db.QueryContext(ctx,
-		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen FROM assets ORDER BY id LIMIT $1 OFFSET $2",
+		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen, COALESCE(network_name, '') FROM assets ORDER BY id LIMIT $1 OFFSET $2",
 		limit, offset,
 	)
 	if err != nil {
@@ -136,7 +136,7 @@ func (r *AssetRepo) List(ctx context.Context, limit, offset int) ([]models.Asset
 // ListByTag returns assets that have the given tag.
 func (r *AssetRepo) ListByTag(ctx context.Context, tag string, limit, offset int) ([]models.Asset, error) {
 	rows, err := r.db.QueryContext(ctx,
-		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen FROM assets WHERE $1 = ANY(COALESCE(tags, '{}')) ORDER BY id LIMIT $2 OFFSET $3",
+		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen, COALESCE(network_name, '') FROM assets WHERE $1 = ANY(COALESCE(tags, '{}')) ORDER BY id LIMIT $2 OFFSET $3",
 		tag, limit, offset,
 	)
 	if err != nil {
@@ -151,7 +151,7 @@ func (r *AssetRepo) scanAssetRows(rows *sql.Rows) ([]models.Asset, error) {
 	for rows.Next() {
 		var a models.Asset
 		var lastSeen sql.NullTime
-		if err := rows.Scan(&a.ID, &a.Name, &a.Description, pq.Array(&a.Tags), &lastSeen); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.Description, pq.Array(&a.Tags), &lastSeen, &a.NetworkName); err != nil {
 			return nil, err
 		}
 		if lastSeen.Valid {
@@ -168,7 +168,7 @@ func (r *AssetRepo) scanAssetRows(rows *sql.Rows) ([]models.Asset, error) {
 func (r *AssetRepo) Search(ctx context.Context, query string, limit, offset int) ([]models.Asset, error) {
 	likeQuery := "%" + strings.ToLower(query) + "%"
 	rows, err := r.db.QueryContext(ctx,
-		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen FROM assets WHERE LOWER(name) LIKE $1 OR LOWER(description) LIKE $1 ORDER BY id LIMIT $2 OFFSET $3",
+		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen, COALESCE(network_name, '') FROM assets WHERE LOWER(name) LIKE $1 OR LOWER(description) LIKE $1 ORDER BY id LIMIT $2 OFFSET $3",
 		likeQuery, limit, offset,
 	)
 	if err != nil {
@@ -185,8 +185,8 @@ func (r *AssetRepo) Get(ctx context.Context, id int) (*models.Asset, error) {
 	var a models.Asset
 	var lastSeen sql.NullTime
 	err := r.db.QueryRowContext(ctx,
-		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen FROM assets WHERE id=$1", id,
-	).Scan(&a.ID, &a.Name, &a.Description, pq.Array(&a.Tags), &lastSeen)
+		"SELECT id, name, description, COALESCE(tags, '{}'), last_seen, COALESCE(network_name, '') FROM assets WHERE id=$1", id,
+	).Scan(&a.ID, &a.Name, &a.Description, pq.Array(&a.Tags), &lastSeen, &a.NetworkName)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("asset not found")
@@ -239,6 +239,25 @@ func (r *AssetRepo) Update(ctx context.Context, id int, name, description string
 		return nil, fmt.Errorf("asset not found")
 	}
 	return r.Get(ctx, id)
+}
+
+// ==========================
+// UpdateNetworkName sets the network_name (e.g. IP) for an asset.
+// Used by scan jobs to persist the discovered IP.
+// ==========================
+func (r *AssetRepo) UpdateNetworkName(ctx context.Context, id int, networkName string) error {
+	res, err := r.db.ExecContext(ctx, "UPDATE assets SET network_name = $1 WHERE id = $2", networkName, id)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("asset not found")
+	}
+	return nil
 }
 
 // ==========================

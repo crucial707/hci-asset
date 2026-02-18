@@ -94,8 +94,9 @@
       th, td { padding: 0.4rem 0.5rem; font-size: 0.9rem; }
     }
   </style>
+  {{if .BodyClass}}<style>body.network-viz{max-width:none;}body.network-viz main{max-width:none;padding:0.5rem;}body.network-viz .network-viz-container{min-height:70vh;width:100%;}</style>{{end}}
 </head>
-<body>
+<body {{if .BodyClass}}class="{{.BodyClass}}"{{end}}>
   <a href="#main" class="skip-link">Skip to main content</a>
   <header class="brand-header" role="banner">
     <a href="/dashboard" aria-label="Humboldt Cyber Intelligence – go to dashboard">
@@ -115,6 +116,7 @@
     <a href="/saved-scans">Saved Scans</a>
     <a href="/schedules">Schedules</a>
     <a href="/audit">Audit log</a>
+    <a href="/network">Network</a>
     {{if .User}}<span class="nav-user" aria-label="Logged in as {{.User.Username}}, {{.User.Role}}">Logged in as <strong>{{.User.Username}}</strong> ({{.User.Role}})</span>{{end}}
     <a href="/logout">Log out</a>
   </nav>

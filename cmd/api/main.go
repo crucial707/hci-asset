@@ -119,6 +119,7 @@ func newRouter(db *sql.DB, cfg config.Config) (*chi.Mux, *handlers.ScanHandler, 
 	savedScanRepo := repo.NewSavedScanRepo(db)
 
 	assetHandler := &handlers.AssetHandler{Repo: assetRepo, AuditRepo: auditRepo}
+	networkHandler := &handlers.NetworkHandler{Repo: assetRepo}
 	scanHandler := &handlers.ScanHandler{Repo: assetRepo, ScanJobRepo: scanJobRepo, NmapPath: cfg.NmapPath}
 	savedScanHandler := &handlers.SavedScanHandler{Repo: savedScanRepo, ScanHandler: scanHandler}
 	userHandler := &handlers.UserHandler{Repo: userRepo, AuditRepo: auditRepo}
@@ -173,6 +174,7 @@ func newRouter(db *sql.DB, cfg config.Config) (*chi.Mux, *handlers.ScanHandler, 
 		// Viewer (and admin): read-only
 		r.With(jwtMiddleware).Get("/assets", assetHandler.ListAssets)
 		r.With(jwtMiddleware).Get("/assets/{id}", assetHandler.GetAsset)
+		r.With(jwtMiddleware).Get("/network/graph", networkHandler.NetworkGraph)
 		r.With(jwtMiddleware).Get("/me", userHandler.Me)
 		r.With(jwtMiddleware).Get("/users", userHandler.ListUsers)
 		r.With(jwtMiddleware).Get("/users/{id}", userHandler.GetUser)
