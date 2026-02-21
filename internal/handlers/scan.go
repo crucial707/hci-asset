@@ -240,8 +240,9 @@ func (h *ScanHandler) runScan(jobID, target string, cancelCh chan struct{}) {
 	if nmapExe == "" {
 		nmapExe = "nmap"
 	}
-	// Use XML output (-oX -) for structured parsing of hostnames and MAC/vendor (when available).
-	cmd := exec.Command(nmapExe, "-sn", "-oX", "-", target)
+	// TCP port scan (-T4 -F): only hosts that respond to TCP are reported, matching a local
+	// "quick scan" and avoiding 260+ false positives from ping sweep (-sn) in Docker/NAT.
+	cmd := exec.Command(nmapExe, "-T4", "-F", "-oX", "-", target)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	outputBytes, err := cmd.Output()
